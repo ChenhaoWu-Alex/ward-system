@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="管床">
+<meta name="theme-color" content="#0a6e5c">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>管床</title>
+<style>
+:root{
+  --c-main:#0a6e5c; --c-main-dark:#085a4b; --c-main-soft:#e3f0ed;
+  --c-bg:#f4f6f5; --c-card:#ffffff; --c-line:#e8ecea;
+  --c-text:#22302c; --c-sub:#7b8a85; --c-danger:#c0392b; --c-warn:#b9770e;
+  --radius:14px;
+  --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--c-bg); color:var(--c-text); font-size:16px; line-height:1.5;
+  overscroll-behavior-y:none;
+}
+button{font-family:inherit;border:none;background:none;color:inherit;cursor:pointer}
+input,select,textarea{font-family:inherit;font-size:16px;color:var(--c-text)}
+
+/* ---------- 锁屏 ---------- */
+#lock{position:fixed;inset:0;z-index:100;background:linear-gradient(160deg,#0a6e5c,#08513f);
+  display:none;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:24px}
+#lock .logo{width:84px;height:84px;border-radius:22px;background:rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:700;margin-bottom:28px}
+#lock h2{font-size:18px;font-weight:600;margin-bottom:6px}
+#lock .hint{font-size:13px;opacity:.75;margin-bottom:26px}
+#lock input{width:200px;text-align:center;font-size:26px;letter-spacing:10px;padding:10px 4px 10px 14px;
+  border:none;border-bottom:2px solid rgba(255,255,255,.5);background:transparent;color:#fff;outline:none}
+#lock input::placeholder{color:rgba(255,255,255,.4);letter-spacing:0;font-size:15px}
+#lock .row{display:flex;gap:14px;margin-top:26px}
+#lock .row button{padding:10px 22px;border-radius:10px;font-size:15px}
+#lock .btn-ok{background:#fff;color:var(--c-main);font-weight:600}
+#lock .btn-ghost{color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.4)}
+#lock .err{color:#ffd7d0;font-size:13px;height:20px;margin-top:14px}
+
+/* ---------- 主框架 ---------- */
+#app{display:none;flex-direction:column;height:100%;max-width:560px;margin:0 auto;background:var(--c-bg)}
+#app.on{display:flex}
+header.appbar{padding:calc(var(--sat) + 10px) 16px 10px;display:flex;align-items:center;justify-content:space-between;background:var(--c-bg);position:sticky;top:0;z-index:10}
+header.appbar h1{font-size:22px;font-weight:700}
+header.appbar .add{width:34px;height:34px;border-radius:50%;background:var(--c-main);color:#fff;font-size:24px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(10,110,92,.35)}
+main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 14px 20px}
+.tabbar{display:flex;background:var(--c-card);border-top:1px solid var(--c-line);
+  padding-bottom:var(--sab);position:sticky;bottom:0}
+.tabbar button{flex:1;padding:8px 0 6px;display:flex;flex-direction:column;align-items:center;gap:2px;
+  color:var(--c-sub);font-size:11px;position:relative}
+.tabbar button.on{color:var(--c-main);font-weight:600}
+.tabbar svg{width:24px;height:24px}
+.tabbar .bdg{position:absolute;top:4px;right:calc(50% - 20px);min-width:16px;height:16px;border-radius:8px;
+  background:var(--c-danger);color:#fff;font-size:10px;line-height:16px;padding:0 4px;display:none}
+.view{display:none}.view.on{display:block}
+
+/* ---------- 通用组件 ---------- */
+.card{background:var(--c-card);border-radius:var(--radius);padding:14px;margin-bottom:12px;box-shadow:0 1px 2px rgba(30,50,45,.04)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--c-main);color:#fff;
+  border-radius:10px;padding:10px 18px;font-size:15px;font-weight:600}
+.btn.block{width:100%;padding:13px;font-size:16px}
+.btn.ghost{background:var(--c-main-soft);color:var(--c-main)}
+.btn.danger{background:#fbeeeb;color:var(--c-danger)}
+.btn.sm{padding:5px 12px;font-size:13px;border-radius:8px;font-weight:500}
+.empty{text-align:center;color:var(--c-sub);padding:40px 20px;font-size:14px}
+.empty .big{font-size:40px;margin-bottom:10px}
+.sect{font-size:13px;color:var(--c-sub);margin:16px 2px 8px;display:flex;justify-content:space-between;align-items:baseline}
+.sect .link{color:var(--c-main);font-size:13px}
+.badge{min-width:20px;height:20px;border-radius:10px;background:var(--c-danger);color:#fff;font-size:12px;
+  line-height:20px;text-align:center;padding:0 6px;font-weight:600}
+.badge.gray{background:#d6dedb;color:var(--c-sub)}
+
+/* 患者卡片 */
+.pt{display:flex;align-items:center;gap:12px;padding:13px 14px}
+.pt .bed{min-width:52px;text-align:center}
+.pt .bed .n{font-size:21px;font-weight:800;color:var(--c-main);line-height:1.15}
+.pt .bed .t{font-size:11px;color:var(--c-sub)}
+.pt .mid{flex:1;min-width:0}
+.pt .mid .name{font-size:17px;font-weight:700}
+.pt .mid .dx{font-size:13px;color:var(--c-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.pt .mid .note{font-size:12px;color:var(--c-warn);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.pt .mid .note:empty{display:none}
+.status-tag{font-size:11px;padding:1px 7px;border-radius:6px;background:var(--c-main-soft);color:var(--c-main);margin-left:6px;vertical-align:2px}
+.status-tag.out{background:#eef0ef;color:var(--c-sub)}
+.status-tag.trans{background:#faf3e3;color:var(--c-warn)}
+
+/* 待办行 */
+.todo{display:flex;align-items:flex-start;gap:10px;padding:11px 4px;border-bottom:1px solid var(--c-line)}
+.todo:last-child{border-bottom:none}
+.todo .chk{width:22px;height:22px;border-radius:50%;border:2px solid #b9c6c1;flex-shrink:0;margin-top:1px;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+.todo .chk.on{background:var(--c-main);border-color:var(--c-main)}
+.todo .txt{flex:1;min-width:0}
+.todo .txt .t1{font-size:15px;word-break:break-all}
+.todo .txt .t2{font-size:12px;color:var(--c-sub);margin-top:1px}
+.todo .txt .t2 .due{color:var(--c-danger);font-weight:600}
+.todo .del{color:#c3cfca;font-size:17px;padding:2px 6px;flex-shrink:0}
+.todo.done .txt .t1{color:var(--c-sub);text-decoration:line-through}
+.todo-group{margin-bottom:14px}
+.todo-group .g-head{font-size:13px;font-weight:700;color:var(--c-main);margin:0 2px 2px}
+
+/* 快速添加 */
+.quick{display:flex;gap:8px;margin-bottom:14px}
+.quick select{flex-shrink:0;width:112px;border:1px solid var(--c-line);border-radius:10px;padding:9px 6px;background:#fff}
+.quick input{flex:1;min-width:0;border:1px solid var(--c-line);border-radius:10px;padding:9px 12px;background:#fff;outline:none}
+.quick input:focus{border-color:var(--c-main)}
+.quick .btn{padding:9px 16px}
+
+/* 我的页 */
+.stat{display:flex;text-align:center;padding:16px 4px}
+.stat>div{flex:1}
+.stat .v{font-size:22px;font-weight:800;color:var(--c-main)}
+.stat .k{font-size:12px;color:var(--c-sub);margin-top:2px}
+.stat .v.warn{color:var(--c-warn)}
+.menu{padding:0}
+.menu .mi{display:flex;align-items:center;justify-content:space-between;padding:14px;border-bottom:1px solid var(--c-line);font-size:15px}
+.menu .mi:last-child{border-bottom:none}
+.menu .mi:active{background:#fafbfa}
+.menu .mi .r{color:var(--c-sub);font-size:13px;max-width:55%;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.menu .mi .r.warn{color:var(--c-warn);font-weight:600}
+.tip{font-size:13px;color:var(--c-sub);line-height:1.7}
+.tip b{color:var(--c-text)}
+
+/* ---------- 患者详情页 ---------- */
+#ppage{position:fixed;inset:0;z-index:50;background:var(--c-bg);display:none;flex-direction:column;max-width:560px;margin:0 auto}
+#ppage.on{display:flex}
+#ppage .pbar{padding:calc(var(--sat) + 10px) 12px 10px;display:flex;align-items:center;gap:6px;background:var(--c-bg);position:sticky;top:0;z-index:5}
+#ppage .pbar .back{font-size:22px;padding:2px 10px;color:var(--c-main);font-weight:700}
+#ppage .pbar .tt{flex:1;font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#ppage .pbar .act{color:var(--c-main);font-size:15px;padding:6px 8px;font-weight:600}
+#ppage .meta{padding:0 16px 8px;font-size:13px;color:var(--c-sub)}
+#ppage .meta div{margin-top:2px}
+.seg{display:flex;background:#e6ebe9;border-radius:10px;padding:3px;margin:6px 16px 4px}
+.seg button{flex:1;padding:7px 0;border-radius:8px;font-size:14px;color:var(--c-sub)}
+.seg button.on{background:#fff;color:var(--c-main);font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.pbody{flex:1;overflow-y:auto;padding:10px 14px calc(var(--sab) + 20px)}
+.kv{margin-bottom:10px}
+.kv .k{font-size:12px;color:var(--c-sub);margin-bottom:2px}
+.kv .v{font-size:15px;white-space:pre-wrap;word-break:break-word}
+.fab{position:fixed;right:18px;bottom:calc(var(--sab) + 76px);width:52px;height:52px;border-radius:50%;
+  background:var(--c-main);color:#fff;font-size:28px;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 12px rgba(10,110,92,.4);z-index:6}
+.exam-item{border-left:3px solid transparent}
+.exam-item.imp{border-left-color:var(--c-danger)}
+.exam-item .h{display:flex;align-items:baseline;gap:8px}
+.exam-item .h .d{font-size:13px;color:var(--c-sub);font-weight:600;flex-shrink:0}
+.exam-item .h .t{font-size:15px;font-weight:700;flex:1;min-width:0;word-break:break-all}
+.exam-item .f{font-size:14px;color:#41504b;white-space:pre-wrap;word-break:break-word;margin-top:3px}
+.exam-item .ops{margin-top:6px;display:flex;gap:14px}
+.exam-item .ops button{font-size:12px;color:var(--c-sub)}
+.exam-item .ops .imp.on{color:var(--c-danger);font-weight:700}
+
+/* ---------- 底部抽屉 ---------- */
+.mask{position:fixed;inset:0;background:rgba(20,35,30,.45);z-index:80;opacity:0;transition:opacity .2s}
+.mask.on{opacity:1}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:81;background:#fff;border-radius:18px 18px 0 0;
+  max-width:560px;margin:0 auto;transform:translateY(100%);transition:transform .25s;
+  padding:16px 16px calc(var(--sab) + 16px);max-height:88vh;overflow-y:auto}
+.sheet.on{transform:translateY(0)}
+.sheet .grip{width:38px;height:4px;border-radius:2px;background:#dde3e1;margin:0 auto 14px}
+.sheet h3{font-size:17px;margin-bottom:14px}
+.form label{display:block;font-size:13px;color:var(--c-sub);margin:12px 0 4px}
+.form input,.form select,.form textarea{width:100%;border:1px solid var(--c-line);border-radius:10px;padding:10px 12px;background:#fff;outline:none}
+.form input:focus,.form textarea:focus{border-color:var(--c-main)}
+.form textarea{min-height:72px;resize:vertical}
+.form .chkline{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:14px}
+.form .chkline input{width:auto}
+.form .btns{display:flex;gap:10px;margin-top:18px}
+.form .btns .btn{flex:1}
+.sheet-act{display:flex;flex-direction:column;gap:10px}
+.sheet-act .btn{width:100%;padding:13px}
+.btn.line{background:#fff;border:1px solid var(--c-line);color:var(--c-text);font-weight:500}
+
+/* toast */
+#toast{position:fixed;left:50%;bottom:calc(var(--sab) + 90px);transform:translateX(-50%) translateY(8px);
+  background:rgba(30,45,40,.92);color:#fff;font-size:14px;padding:9px 18px;border-radius:20px;z-index:99;
+  opacity:0;pointer-events:none;transition:all .25s;max-width:80vw;text-align:center}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<!-- 锁屏 -->
+<div id="lock">
+  <div class="logo">管</div>
+  <h2 id="lock-title">输入 PIN 解锁</h2>
+  <div class="hint">数据只存在本机，PIN 防的是旁人随手翻看</div>
+  <input id="lock-input" type="tel" inputmode="numeric" maxlength="6" placeholder="PIN 码" autocomplete="off">
+  <div class="err" id="lock-err"></div>
+  <div class="row">
+    <button class="btn-ghost" id="lock-forgot" style="display:none">忘记 PIN？</button>
+    <button class="btn-ghost" id="lock-skip" style="display:none">暂不设置</button>
+    <button class="btn-ok" id="lock-ok">解锁</button>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="app">
+  <header class="appbar">
+    <h1 id="bar-title">管床</h1>
+    <button class="add" id="btn-add-pt" title="新建患者">＋</button>
+  </header>
+  <main id="main">
+    <!-- 病区 -->
+    <section class="view on" id="view-ward"></section>
+    <!-- 待办 -->
+    <section class="view" id="view-todos"></section>
+    <!-- 我的 -->
+    <section class="view" id="view-more"></section>
+  </main>
+  <nav class="tabbar">
+    <button data-tab="ward" class="on">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18h18"/><path d="M19 10V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v4"/><circle cx="9" cy="14" r="0.5"/></svg>
+      病区<span class="bdg" id="bdg-ward"></span>
+    </button>
+    <button data-tab="todos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 8 1.8 1.8L14 6.2"/><path d="M8.5 15.5h7"/></svg>
+      待办<span class="bdg" id="bdg-todos"></span>
+    </button>
+    <button data-tab="more">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
+      我的
+    </button>
+  </nav>
+</div>
+
+<!-- 患者详情 -->
+<div id="ppage">
+  <div class="pbar">
+    <button class="back" id="p-back">‹</button>
+    <div class="tt" id="p-title"></div>
+    <button class="act" id="p-edit">编辑</button>
+  </div>
+  <div class="meta" id="p-meta"></div>
+  <div class="seg" id="p-seg">
+    <button data-pt="ov" class="on">概览</button>
+    <button data-pt="hx">病史</button>
+    <button data-pt="exam">检验检查</button>
+  </div>
+  <div class="pbody" id="p-body"></div>
+</div>
+
+<div id="toast"></div>
+<input type="file" id="file-in" accept=".json,application/json" style="display:none">
+
+<script>
+'use strict';
+/* ================= 工具 ================= */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
+const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+const md = d => (d || '').slice(5).replace('-', '/');
+const APP_VER = '1.0.0';
+function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
+  for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return (4294967296*(2097151&h2)+(h1>>>0)).toString(16); }
+
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on');
+  clearTimeout(toast._tm); toast._tm=setTimeout(()=>t.classList.remove('on'),2000); }
+
+/* ================= 数据库 ================= */
+let db;
+function openDB(){ return new Promise((res,rej)=>{
+  const r = indexedDB.open('wardDB', 1);
+  r.onupgradeneeded = e => { const d=e.target.result;
+    d.createObjectStore('patients',{keyPath:'id'});
+    d.createObjectStore('todos',{keyPath:'id'});
+    d.createObjectStore('exams',{keyPath:'id'});
+    d.createObjectStore('meta',{keyPath:'k'}); };
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });}
+const txPut=(st,v)=>new Promise((res,rej)=>{const t=db.transaction(st,'readwrite');t.objectStore(st).put(v);t.oncomplete=res;t.onerror=()=>rej(t.error);});
+const txDel=(st,k)=>new Promise((res,rej)=>{const t=db.transaction(st,'readwrite');t.objectStore(st).delete(k);t.oncomplete=res;t.onerror=()=>rej(t.error);});
+const txAll=(st)=>new Promise((res,rej)=>{const r=db.transaction(st).objectStore(st).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
+const txClear=(st)=>new Promise((res,rej)=>{const t=db.transaction(st,'readwrite');t.objectStore(st).clear();t.oncomplete=res;t.onerror=()=>rej(t.error);});
+async function metaGet(){ return (await txAll('meta')).find(x=>x.k==='main') || {k:'main'}; }
+const metaPut = m => txPut('meta', m);
+
+/* ================= 状态 ================= */
+const state = { patients:[], todos:[], exams:[], meta:{k:'main'}, tab:'ward', cur:null, pTab:'ov', showDone:false, showOut:false };
+
+function sortPt(a,b){ const A=(a.bed||'').trim(), B=(b.bed||'').trim();
+  const na=parseFloat(A), nb=parseFloat(B);
+  if(!isNaN(na)&&!isNaN(nb)&&String(na)===A.replace(/床$/,'')&&String(nb)===B.replace(/床$/,'')) return na-nb;
+  return A.localeCompare(B,'zh',{numeric:true}); }
+const activePts = () => state.patients.filter(p=>p.status==='在院').sort(sortPt);
+const outPts = () => state.patients.filter(p=>p.status!=='在院').sort(sortPt);
+const ptById = id => state.patients.find(p=>p.id===id);
+function ptName(p){ const b=(p.bed||'').replace(/床$/,''); return b ? b+'床·'+(p.name||'') : (p.name||'未命名'); }
+const openTodos = pid => state.todos.filter(t=>t.patientId===pid && !t.done).sort((a,b)=>b.createdAt-a.createdAt);
+const openTodoAll = () => state.todos.filter(t=>!t.done);
+const examsOf = pid => state.exams.filter(x=>x.patientId===pid)
+  .sort((a,b)=> (b.date||'').localeCompare(a.date||'') || b.createdAt-a.createdAt);
+
+async function markChange(){
+  state.meta.changes = (state.meta.changes||0) + 1;
+  state.meta.autoBackup = JSON.stringify({patients:state.patients, todos:state.todos, exams:state.exams});
+  state.meta.autoBackupAt = Date.now();
+  await metaPut(state.meta);
+}
+async function loadAll(){
+  state.patients = await txAll('patients');
+  state.todos = await txAll('todos');
+  state.exams = await txAll('exams');
+  state.meta = await metaGet();
+}
+
+/* ================= 锁屏 ================= */
+const lock = { mode:'unlock' }; // unlock | setup
+function showLock(){
+  $('#lock').style.display='flex';
+  if(state.meta.pinHash){ lock.mode='unlock'; $('#lock-title').textContent='输入 PIN 解锁';
+    $('#lock-forgot').style.display=''; $('#lock-skip').style.display='none'; }
+  else { lock.mode='setup'; $('#lock-title').textContent='设置 PIN（4–6 位数字）';
+    $('#lock-forgot').style.display='none'; $('#lock-skip').style.display=''; }
+  $('#lock-input').value=''; $('#lock-err').textContent='';
+  setTimeout(()=>$('#lock-input').focus(), 100);
+}
+async function tryLock(){
+  const v = $('#lock-input').value.trim();
+  if(v.length<4){ $('#lock-err').textContent='至少 4 位'; return; }
+  const h = cyrb53(v);
+  if(lock.mode==='setup'){
+    if(!lock.pending){ lock.pending=h; $('#lock-input').value=''; $('#lock-title').textContent='再输一遍确认';
+      $('#lock-err').textContent=''; return; }
+    if(lock.pending!==h){ lock.pending=null; $('#lock-input').value=''; $('#lock-title').textContent='两次不一致，重新设置 PIN';
+      $('#lock-err').textContent=''; return; }
+    state.meta.pinHash=h; state.meta.pinSkipped=false; await metaPut(state.meta); lock.pending=null;
+  } else {
+    if(state.meta.pinHash!==h){ $('#lock-err').textContent='PIN 不对'; $('#lock-input').value=''; return; }
+  }
+  sessionStorage.setItem('wardUnlocked','1');
+  $('#lock').style.display='none';
+  $('#app').classList.add('on');
+  renderAll();
+}
+async function resetAll(){
+  await txClear('patients'); await txClear('todos'); await txClear('exams'); await txClear('meta');
+  state.patients=[]; state.todos=[]; state.exams=[]; state.meta={k:'main'};
+  sessionStorage.removeItem('wardUnlocked');
+  toast('已重置'); showLock();
+}
+
+/* ================= 渲染：病区 ================= */
+function renderWard(){
+  const pts = activePts(), outs = outPts();
+  let h = '';
+  if(!pts.length && !outs.length){
+    h += `<div class="empty"><div class="big">🛏️</div>还没有患者<br>点右上角 ＋ 建第一位管床患者</div>`;
+  }
+  if(pts.length){
+    h += `<div class="sect"><span>在院 ${pts.length} 人</span></div>`;
+    h += pts.map(ptCard).join('');
+  }
+  if(outs.length){
+    h += `<div class="sect"><span>已出院 / 转科 ${outs.length} 人</span><span class="link" id="toggle-out">${state.showOut?'收起':'展开'}</span></div>`;
+    if(state.showOut) h += outs.map(ptCard).join('');
+  }
+  $('#view-ward').innerHTML = h;
+  const tg = $('#toggle-out'); if(tg) tg.onclick = ()=>{ state.showOut=!state.showOut; renderWard(); };
+  $('#view-ward').querySelectorAll('.pt').forEach(el=>{
+    el.onclick = ()=> openPatient(el.dataset.id);
+  });
+}
+function ptCard(p){
+  const n = openTodos(p.id).length;
+  const st = p.status==='在院' ? '' :
+    `<span class="status-tag ${p.status==='已出院'?'out':'trans'}">${esc(p.status)}</span>`;
+  return `<div class="card pt" data-id="${p.id}">
+    <div class="bed"><div class="n">${esc(p.bed||'—')}</div><div class="t">床</div></div>
+    <div class="mid">
+      <div class="name">${esc(p.name||'未命名')}${st}</div>
+      <div class="dx">${esc([p.diagnosis,p.surgery].filter(Boolean).join(' ｜ ')||'未填诊断')}</div>
+      <div class="note">${esc(p.note||'')}</div>
+    </div>
+    ${n?`<span class="badge">${n}</span>`:''}
+  </div>`;
+}
+
+/* ================= 渲染：待办 ================= */
+function renderTodos(){
+  const pts = activePts();
+  const groups = pts.map(p=>({p, list:openTodos(p.id)})).filter(g=>g.list.length);
+  let h = `<div class="quick">
+    <select id="q-pt">${pts.map(p=>`<option value="${p.id}">${esc(ptName(p))}</option>`).join('')}</select>
+    <input id="q-txt" placeholder="加待办，回车即存">
+    <button class="btn" id="q-add">添加</button></div>
+    <button class="btn ghost block" id="voice-entry" style="margin-bottom:14px">🎙️ 语音记录（录音 → 拆待办 / 整理病史）</button>`;
+  if(!pts.length) h = `<div class="empty"><div class="big">📝</div>先在「病区」里建患者，才能加待办</div>`;
+  if(!groups.length && pts.length) h += `<div class="empty">全病区待办已清空 ✓</div>`;
+  for(const g of groups){
+    h += `<div class="todo-group"><div class="g-head">${esc(ptName(g.p))}</div><div class="card" style="padding:2px 12px">` +
+      g.list.map(t=>todoRow(t,false)).join('') + `</div></div>`;
+  }
+  const dones = state.todos.filter(t=>t.done).sort((a,b)=>b.doneAt-a.doneAt);
+  if(dones.length){
+    h += `<div class="sect"><span>已完成 ${dones.length}</span><span class="link" id="toggle-done">${state.showDone?'收起':'展开'}</span></div>`;
+    if(state.showDone){
+      h += `<div class="card" style="padding:2px 12px">` + dones.map(t=>todoRow(t,true)).join('') + `</div>`;
+    }
+  }
+  $('#view-todos').innerHTML = h;
+  bindTodoOps($('#view-todos'));
+  const qAdd = $('#q-add');
+  if(qAdd){
+    const doAdd = async ()=>{
+      const pid = $('#q-pt').value, txt = $('#q-txt').value.trim();
+      if(!txt) return toast('先写内容');
+      await addTodo(pid, txt);
+      $('#q-txt').value=''; renderTodos();
+    };
+    qAdd.onclick = doAdd;
+    $('#q-txt').onkeydown = e=>{ if(e.key==='Enter') doAdd(); };
+  }
+  const ve = $('#voice-entry'); if(ve) ve.onclick = voiceSheet;
+  const td = $('#toggle-done'); if(td) td.onclick = ()=>{ state.showDone=!state.showDone; renderTodos(); };
+}
+function todoRow(t, doneView){
+  const p = ptById(t.patientId);
+  return `<div class="todo ${t.done?'done':''}" data-id="${t.id}">
+    <button class="chk ${t.done?'on':''}" data-op="toggle">${t.done?'✓':''}</button>
+    <div class="txt">
+      <div class="t1">${esc(t.text)}</div>
+      <div class="t2">${doneView
+        ? `完成于 ${md(isoToDate(t.doneAt))}`
+        : `${p&&p.status!=='在院'?esc(ptName(p))+' · ':''}${t.due?`<span class="due">${md(t.due)}前</span> `:''}${fmtCreated(t.createdAt)}`}</div>
+    </div>
+    <button class="del" data-op="del">✕</button>
+  </div>`;
+}
+const isoToDate = ts => { const d=new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+const fmtCreated = ts => { const d=isoToDate(ts); return d===today()?'今天建的':md(d)+'建的'; };
+function bindTodoOps(root){
+  root.querySelectorAll('.todo').forEach(row=>{
+    const id = row.dataset.id;
+    row.querySelector('[data-op=toggle]').onclick = async ()=>{
+      const t = state.todos.find(x=>x.id===id); if(!t) return;
+      t.done = !t.done; t.doneAt = t.done ? Date.now() : null;
+      await txPut('todos', t); await markChange(); renderAll();
+    };
+    row.querySelector('[data-op=del]').onclick = async ()=>{
+      const t = state.todos.find(x=>x.id===id); if(!t) return;
+      if(!await confirmBox(`删除待办「${t.text.slice(0,20)}」？`)) return;
+      await txDel('todos', id); await markChange(); renderAll(); toast('已删除');
+    };
+  });
+}
+async function addTodo(pid, text, due=''){
+  const t = { id:uid(), patientId:pid, text, due, done:false, doneAt:null, createdAt:Date.now() };
+  await txPut('todos', t); state.todos.push(t); await markChange();
+}
+
+/* ================= 渲染：我的 ================= */
+function renderMore(){
+  const m = state.meta;
+  const chg = m.changes||0;
+  $('#view-more').innerHTML = `
+  <div class="card stat">
+    <div><div class="v">${activePts().length}</div><div class="k">在院患者</div></div>
+    <div><div class="v">${openTodoAll().length}</div><div class="k">未办待办</div></div>
+    <div><div class="v ${chg?'warn':''}">${chg}</div><div class="k">未备份改动</div></div>
+  </div>
+  ${chg ? `<div class="card tip" style="border:1px solid #f0d9b5;background:#fdf8ef">⚠️ 距上次备份已有 <b>${chg}</b> 条改动。建议现在导出一次备份到 iCloud「文件」。</div>` : ''}
+  <div class="card menu">
+    <button class="mi" id="mi-export"><span>📤 导出备份</span><span class="r">存到 iCloud「文件」</span></button>
+    <button class="mi" id="mi-import"><span>📥 导入备份</span><span class="r">覆盖恢复</span></button>
+    <button class="mi" id="mi-restore"><span>♻️ 恢复手机内自动备份</span><span class="r">${m.autoBackupAt?('备于 '+md(isoToDate(m.autoBackupAt))):'暂无'}</span></button>
+  </div>
+  <div class="card menu">
+    <button class="mi" id="mi-ai"><span>🤖 AI 设置（智谱 GLM）</span><span class="r ${m.aiKey?'':'warn'}">${m.aiKey?'已配置':'未配置'}</span></button>
+    <button class="mi" id="mi-pin"><span>🔒 PIN 锁</span><span class="r ${m.pinHash?'':'warn'}">${m.pinHash?'已开启':'未开启'}</span></button>
+    <button class="mi" id="mi-out"><span>🏥 已出院 / 转科管理</span><span class="r">${outPts().length} 人</span></button>
+  </div>
+  <div class="card tip">
+    <b>数据在哪？</b>全部只存在这台手机的浏览器里，离线可用、不上网也行。<br>
+    <b>怎么不丢？</b>「我的 → 导出备份」，在分享面板里选「存储到文件」→ iCloud Drive。换手机或清了浏览器，导入备份即可复原。<br>
+    <b>换设备写数据前</b>，先确认另一台没在同时改（没有云同步，两头写会互相覆盖）。<br>
+    <b>隐私：</b>含真实姓名的数据别截图外发；PIN 只防旁人随手翻看，不是加密。
+  </div>
+  <div style="text-align:center;color:#aab6b1;font-size:12px;padding:6px 0 14px">管床系统 v${APP_VER}</div>`;
+  $('#mi-export').onclick = exportBackup;
+  $('#mi-import').onclick = ()=> $('#file-in').click();
+  $('#mi-restore').onclick = restoreAuto;
+  $('#mi-ai').onclick = aiSheet;
+  $('#mi-pin').onclick = pinSheet;
+  $('#mi-out').onclick = outSheet;
+}
+function pinSheet(){
+  const m = state.meta;
+  sheet({
+    title: m.pinHash ? '修改 / 关闭 PIN 锁' : '开启 PIN 锁',
+    body: `<div class="form" id="pinf">
+      ${m.pinHash?`<label>当前 PIN</label><input type="tel" inputmode="numeric" maxlength="6" id="pin-old">`:''}
+      <label>新 PIN（4–6 位数字；留空＝关闭锁）</label><input type="tel" inputmode="numeric" maxlength="6" id="pin-a">
+      <label>再输一遍</label><input type="tel" inputmode="numeric" maxlength="6" id="pin-b">
+      <div class="tip" style="margin-top:10px">忘了 PIN＝只能清空重置，记得先导出备份。</div></div>`,
+    okText:'保存',
+    onOk: async (el)=>{
+      const a=el.querySelector('#pin-a').value.trim(), b=el.querySelector('#pin-b').value.trim();
+      const old=el.querySelector('#pin-old');
+      if(old && cyrb53(old.value.trim())!==m.pinHash) return toast('当前 PIN 不对'), false;
+      if(!a){ m.pinHash=null; }
+      else {
+        if(a.length<4) { toast('至少 4 位'); return false; }
+        if(a!==b){ toast('两次不一致'); return false; }
+        m.pinHash=cyrb53(a); m.pinSkipped=false;
+      }
+      await metaPut(m); toast(m.pinHash?'PIN 已更新':'PIN 锁已关闭'); renderMore(); return true;
+    }
+  });
+}
+function outSheet(){
+  const outs = outPts();
+  sheet({
+    title:`已出院 / 转科（${outs.length}）`,
+    body: outs.length ? `<div class="sheet-act">` + outs.map(p=>`
+      <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--c-line);padding:8px 2px">
+        <div style="flex:1"><b>${esc(ptName(p))}</b><div style="font-size:12px;color:var(--c-sub)">${esc(p.status)}${p.dischargedAt?(' · '+md(isoToDate(p.dischargedAt))):''}</div></div>
+        <button class="btn sm ghost" data-act="back" data-id="${p.id}">恢复在院</button>
+        <button class="btn sm danger" data-act="kill" data-id="${p.id}">彻底删除</button>
+      </div>`).join('') + `</div>` : `<div class="empty">没有出院患者</div>`,
+    hideOk:true,
+    onMount: el => el.querySelectorAll('[data-act]').forEach(b=>{
+      b.onclick = async ()=>{
+        const p = ptById(b.dataset.id); if(!p) return;
+        if(b.dataset.act==='back'){ p.status='在院'; p.dischargedAt=null; await txPut('patients',p); await markChange(); toast('已恢复'); }
+        else { if(!await confirmBox(`彻底删除 ${ptName(p)} 及其全部待办、检查记录？不可恢复！`)) return;
+          state.todos.filter(t=>t.patientId===p.id).forEach(t=>txDel('todos',t.id));
+          state.exams.filter(x=>x.patientId===p.id).forEach(x=>txDel('exams',x.id));
+          await txDel('patients',p.id); await markChange(); toast('已删除'); }
+        closeSheet(); renderAll(); outSheet();
+      };
+    })
+  });
+}
+
+/* ================= 备份 ================= */
+function buildBackup(){
+  return { app:'ward-system', ver:1, exportedAt:new Date().toISOString(),
+    patients:state.patients, todos:state.todos, exams:state.exams };
+}
+async function exportBackup(){
+  try{
+    const data = buildBackup();
+    const d = new Date(); const stamp = d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+    const name = `管床备份-${stamp}.json`;
+    const file = new File([JSON.stringify(data,null,2)], name, {type:'application/json'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({ files:[file], title:'管床备份' });
+    } else {
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})); a.download=name; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    }
+    state.meta.changes=0; state.meta.lastBackup=Date.now(); await metaPut(state.meta);
+    toast('备份已导出');
+  }catch(err){
+    if(err && err.name==='AbortError') return;   // 用户取消分享不算失败
+    toast('导出失败：'+err.message);
+  }
+}
+function importBackup(){
+  $('#file-in').onchange = async e=>{
+    const f = e.target.files[0]; e.target.value='';
+    if(!f) return;
+    try{
+      const data = JSON.parse(await f.text());
+      if(data.app!=='ward-system') return toast('不是本系统的备份文件');
+      if(!await confirmBox(`备份时间 ${data.exportedAt.slice(0,16).replace('T',' ')}\n患者 ${data.patients.length}、待办 ${data.todos.length}、检查 ${data.exams.length} 条。\n导入会【覆盖】手机当前全部数据，确定？`)) return;
+      await txClear('patients'); await txClear('todos'); await txClear('exams');
+      for(const p of data.patients) await txPut('patients',p);
+      for(const t of data.todos) await txPut('todos',t);
+      for(const x of data.exams) await txPut('exams',x);
+      await loadAll();
+      state.meta.changes=0; state.meta.autoBackup=JSON.stringify({patients:state.patients,todos:state.todos,exams:state.exams}); state.meta.autoBackupAt=Date.now();
+      await metaPut(state.meta);
+      renderAll(); toast('导入完成');
+    }catch(err){ toast('导入失败：'+err.message); }
+  };
+  $('#file-in').click();
+}
+async function restoreAuto(){
+  const m = state.meta;
+  if(!m.autoBackup) return toast('还没有自动备份');
+  if(!await confirmBox(`恢复到 ${md(isoToDate(m.autoBackupAt))} 的手机内自动备份？\n会覆盖当前数据。`)) return;
+  const data = JSON.parse(m.autoBackup);
+  await txClear('patients'); await txClear('todos'); await txClear('exams');
+  for(const p of data.patients) await txPut('patients',p);
+  for(const t of data.todos) await txPut('todos',t);
+  for(const x of data.exams) await txPut('exams',x);
+  await loadAll(); renderAll(); toast('已恢复');
+}
+
+/* ================= 患者详情 ================= */
+function openPatient(id){
+  const p = ptById(id); if(!p) return;
+  state.cur = id;
+  $('#p-title').textContent = ptName(p);
+  $('#p-meta').innerHTML =
+    `${p.diagnosis?`<div>诊断：${esc(p.diagnosis)}</div>`:''}` +
+    `${p.surgery?`<div>手术：${esc(p.surgery)}</div>`:''}` +
+    `${p.admission?`<div>入科：${md(p.admission)}</div>`:''}`;
+  state.pTab='ov';
+  $('#p-seg').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.pt==='ov'));
+  renderPBody();
+  $('#ppage').classList.add('on');
+}
+function renderPBody(){
+  const p = ptById(state.cur); if(!p) return;
+  const el = $('#p-body');
+  if(state.pTab==='ov'){
+    const list = openTodos(p.id);
+    el.innerHTML = `
+      <div class="sect"><span>备注</span><span class="link" id="pv-note">编辑备注</span></div>
+      <div class="card" style="white-space:pre-wrap;word-break:break-word">${p.note?esc(p.note):'<span style="color:var(--c-sub)">（空）过敏史、家属情况、注意事项……</span>'}</div>
+      <div class="sect"><span>本床待办（${list.length}）</span></div>
+      <div class="card" style="padding:2px 12px">${list.length?list.map(t=>todoRow(t,false)).join(''):'<div class="empty" style="padding:18px">没有未办事项</div>'}</div>
+      <div class="quick" style="margin-top:10px">
+        <input id="pv-txt" placeholder="给本床加待办，回车即存">
+        <button class="btn" id="pv-add">添加</button></div>
+      <div class="sect"><span>管理</span></div>
+      <div class="card" style="padding:6px">
+        <button class="btn danger block" id="pv-out" style="background:#fbeeeb;color:var(--c-danger);margin:6px 0">${p.status==='在院'?'出院 / 转科归档':'恢复为在院'}</button>
+      </div>`;
+    bindTodoOps(el);
+    $('#pv-note').onclick = editPatient.bind(null, p.id, true);
+    const doAdd = async ()=>{ const v=$('#pv-txt').value.trim(); if(!v) return;
+      await addTodo(p.id, v); $('#pv-txt').value=''; renderPBody(); renderAll(); };
+    $('#pv-add').onclick = doAdd;
+    $('#pv-txt').onkeydown = e=>{ if(e.key==='Enter') doAdd(); };
+    $('#pv-out').onclick = async ()=>{
+      if(p.status==='在院'){
+        if(!await confirmBox(`${ptName(p)} 出院 / 转科归档？\n归档后从病区列表移入「已出院」，可恢复。`)) return;
+        p.status = '已出院'; p.dischargedAt = Date.now();
+      } else { p.status='在院'; p.dischargedAt=null; }
+      await txPut('patients',p); await markChange(); renderAll(); openPatient(p.id);
+    };
+  }
+  else if(state.pTab==='hx'){
+    const rows = [['主诉','chief'],['现病史','present'],['既往史','past'],['查体要点','exam']];
+    el.innerHTML = `
+      <div class="sect"><span>病史</span><span><span class="link" id="hx-ai">🤖 AI 整理</span> · <span class="link" id="hx-edit">编辑</span></span></div>
+      ${rows.map(([k,f])=>`<div class="card"><div class="kv"><div class="k">${k}</div><div class="v">${p.history&&p.history[f]?esc(p.history[f]):'<span style="color:var(--c-sub)">（未填）</span>'}</div></div></div>`).join('')}`;
+    $('#hx-edit').onclick = ()=>{
+      const hh = p.history||{};
+      sheet({ title:'编辑病史', okText:'保存',
+        body:`<div class="form">
+          <label>主诉</label><textarea id="hx-chief">${esc(hh.chief||'')}</textarea>
+          <label>现病史</label><textarea id="hx-present" style="min-height:110px">${esc(hh.present||'')}</textarea>
+          <label>既往史</label><textarea id="hx-past">${esc(hh.past||'')}</textarea>
+          <label>查体要点</label><textarea id="hx-exam">${esc(hh.exam||'')}</textarea></div>`,
+        onOk: async el=>{
+          p.history = { chief:el.querySelector('#hx-chief').value.trim(),
+            present:el.querySelector('#hx-present').value.trim(),
+            past:el.querySelector('#hx-past').value.trim(),
+            exam:el.querySelector('#hx-exam').value.trim() };
+          await txPut('patients',p); await markChange(); renderPBody(); toast('病史已保存'); return true;
+        }});
+    };
+    $('#hx-ai').onclick = ()=> hxAISheet(p);
+  }
+  else {
+    const list = examsOf(p.id);
+    el.innerHTML = `
+      <div class="sect"><span>检验检查（新 → 旧，共 ${list.length} 条）</span><span class="link" id="exam-ai">📷 拍单识别</span></div>
+      ${list.length?list.map(x=>`
+        <div class="card exam-item ${x.important?'imp':''}">
+          <div class="h"><span class="d">${esc(md(x.date))}</span><span class="t">${esc(x.title)}</span></div>
+          ${x.findings?`<div class="f">${esc(x.findings)}</div>`:''}
+          <div class="ops">
+            <button class="imp ${x.important?'on':''}" data-op="imp">${x.important?'★ 重要（点击取消）':'☆ 标为重要'}</button>
+            <button data-op="edit">改</button>
+            <button data-op="del">删</button>
+          </div>
+        </div>`).join(''):`<div class="empty"><div class="big">🧪</div>结果回报后点右下角 ＋ 记一条</div>`}
+      <button class="fab" id="exam-add">＋</button>`;
+    $('#exam-add').onclick = ()=> examSheet(p.id);
+    $('#exam-ai').onclick = ()=> examAISheet(p);
+    const items = el.querySelectorAll('.exam-item');
+    list.forEach((x,i)=>{
+      const item = items[i];
+      item.querySelector('[data-op=imp]').onclick = async ()=>{
+        x.important = !x.important; await txPut('exams',x); await markChange(); renderPBody();
+      };
+      item.querySelector('[data-op=del]').onclick = async ()=>{
+        if(!await confirmBox(`删除「${x.title}」？`)) return;
+        await txDel('exams',x.id); state.exams=state.exams.filter(e=>e.id!==x.id); await markChange(); renderPBody(); toast('已删除');
+      };
+      item.querySelector('[data-op=edit]').onclick = ()=> examSheet(p.id, x);
+    });
+  }
+}
+function examSheet(pid, exist){
+  const p = ptById(pid);
+  sheet({ title: exist?'修改检查记录':'记录检验检查', okText:'保存',
+    body:`<div class="form">
+      <label>日期</label><input type="date" id="ex-date" value="${exist?esc(exist.date):today()}">
+      <label>项目（如：血常规 / 头颅 CT）</label><input id="ex-title" value="${exist?esc(exist.title):''}">
+      <label>关键结果与判读</label><textarea id="ex-find" style="min-height:100px" placeholder="只记要点：异常值、结论、下一步">${exist?esc(exist.findings):''}</textarea>
+      <div class="chkline"><input type="checkbox" id="ex-imp" ${exist&&exist.important?'checked':''}><label for="ex-imp" style="margin:0;color:var(--c-danger)">标为重要（危急值、需交代事项）</label></div></div>`,
+    onOk: async el=>{
+      const title = el.querySelector('#ex-title').value.trim();
+      if(!title){ toast('项目名不能为空'); return false; }
+      const rec = exist || { id:uid(), patientId:pid, createdAt:Date.now() };
+      rec.date = el.querySelector('#ex-date').value || today();
+      rec.title = title;
+      rec.findings = el.querySelector('#ex-find').value.trim();
+      rec.important = el.querySelector('#ex-imp').checked;
+      await txPut('exams',rec);
+      if(!state.exams.find(e=>e.id===rec.id)) state.exams.push(rec);
+      await markChange(); renderPBody(); renderWard(); renderAll(); toast('已记录'); return true;
+    }});
+}
+
+/* ================= 新建 / 编辑患者 ================= */
+function patientSheet(existId, noteOnly){
+  const p = existId ? ptById(existId) : null;
+  sheet({ title: noteOnly?'编辑备注' : (p?'编辑患者信息':'新建患者'), okText:'保存',
+    body:`<div class="form">
+      <div style="display:flex;gap:10px">
+        <div style="flex:0 0 90px"><label>床号</label><input id="f-bed" inputmode="numeric" value="${p?esc(p.bed):''}" placeholder="如 12"></div>
+        <div style="flex:1"><label>姓名</label><input id="f-name" value="${p?esc(p.name):''}"></div>
+      </div>
+      ${noteOnly?'':`
+      <label>入科日期</label><input type="date" id="f-adm" value="${p&&p.admission?esc(p.admission):today()}">
+      <label>诊断</label><input id="f-dx" value="${p?esc(p.diagnosis||''):''}" placeholder="如 颞叶癫痫（药物难治性）">
+      <label>手术 / 计划</label><input id="f-op" value="${p?esc(p.surgery||''):''}" placeholder="如 拟 SEEG：左颞">
+      <label>状态</label><select id="f-st">
+        ${['在院','已出院','转科'].map(s=>`<option ${p&&p.status===s?'selected':''}>${s}</option>`).join('')}</select>`}
+      <label>备注（过敏、家属、注意事项…）</label><textarea id="f-note">${p?esc(p.note||''):''}</textarea></div>`,
+    onOk: async el=>{
+      const name = el.querySelector('#f-name').value.trim();
+      const bed = el.querySelector('#f-bed').value.trim();
+      if(!bed && !name) { toast('床号和姓名至少填一个'); return false; }
+      if(p){
+        p.bed=bed; p.name=name; p.note=el.querySelector('#f-note').value.trim();
+        if(!noteOnly){
+          p.admission=el.querySelector('#f-adm').value; p.diagnosis=el.querySelector('#f-dx').value.trim();
+          p.surgery=el.querySelector('#f-op').value.trim(); p.status=el.querySelector('#f-st').value;
+          if(p.status!=='在院' && !p.dischargedAt) p.dischargedAt=Date.now();
+          if(p.status==='在院') p.dischargedAt=null;
+        }
+        await txPut('patients',p); await markChange();
+        if(state.cur===p.id) openPatient(p.id);
+      } else {
+        const np = { id:uid(), bed, name, note:el.querySelector('#f-note').value.trim(),
+          admission:el.querySelector('#f-adm').value, diagnosis:el.querySelector('#f-dx').value.trim(),
+          surgery:el.querySelector('#f-op').value.trim(), status:'在院', dischargedAt:null, history:null, createdAt:Date.now() };
+        await txPut('patients',np); state.patients.push(np); await markChange();
+        toast('已建档'); switchTab('ward');
+      }
+      renderAll(); return true;
+    }});
+}
+
+/* ================= 抽屉 / 确认框 ================= */
+let _sheetClose=null;
+function sheet({title, body, okText='确定', onOk, onMount, onUnmount, hideOk, danger}){
+  closeSheet();
+  const mask=document.createElement('div'); mask.className='mask';
+  const sh=document.createElement('div'); sh.className='sheet';
+  sh.innerHTML = `<div class="grip"></div><h3>${esc(title)}</h3>${body}
+    ${hideOk?'':`<div class="btns" style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn line" style="flex:1;padding:12px" id="sh-cancel">取消</button>
+      <button class="btn ${danger?'danger':''}" style="flex:2;padding:12px;background:${danger?'#c0392b':'var(--c-main)'};color:#fff" id="sh-ok">${esc(okText)}</button></div>`}`;
+  document.body.append(mask, sh);
+  requestAnimationFrame(()=>{ mask.classList.add('on'); sh.classList.add('on'); });
+  const close = ()=>{ if(onUnmount) try{ onUnmount(); }catch(e){} _sheetClose=null;
+    mask.classList.remove('on'); sh.classList.remove('on'); setTimeout(()=>{mask.remove();sh.remove();},260); };
+  _sheetClose = close;
+  mask.onclick = close;
+  const c=sh.querySelector('#sh-cancel'); if(c) c.onclick=close;
+  const ok=sh.querySelector('#sh-ok');
+  if(ok) ok.onclick = async ()=>{ if(!onOk) return close();
+    const r = await onOk(sh); if(r!==false) close(); };
+  if(onMount) onMount(sh);
+}
+function closeSheet(){ if(_sheetClose){ _sheetClose(); _sheetClose=null; } }
+function confirmBox(msg){
+  return new Promise(res=>{
+    const mask=document.createElement('div'); mask.className='mask';
+    const sh=document.createElement('div'); sh.className='sheet';
+    sh.innerHTML=`<div class="grip"></div><div style="white-space:pre-wrap;font-size:15px;line-height:1.7;padding:4px 2px 6px">${esc(msg)}</div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn line" style="flex:1;padding:12px" id="cf-no">取消</button>
+      <button class="btn" style="flex:1;padding:12px;background:var(--c-main);color:#fff" id="cf-yes">确定</button></div>`;
+    document.body.append(mask, sh);
+    requestAnimationFrame(()=>{ mask.classList.add('on'); sh.classList.add('on'); });
+    const done=v=>{ mask.classList.remove('on'); sh.classList.remove('on'); setTimeout(()=>{mask.remove();sh.remove();},260); res(v); };
+    mask.onclick=()=>done(false);
+    sh.querySelector('#cf-no').onclick=()=>done(false);
+    sh.querySelector('#cf-yes').onclick=()=>done(true);
+  });
+}
+
+/* ================= AI 功能（智谱 GLM 开放平台，浏览器直连） ================= */
+const PRIVACY_NOTE = '⚠️ 隐私确认：你选择了「只处理脱敏内容」。发送前请确认内容已去除姓名、病历号、住院号、条码等身份信息——点击发送即表示内容已脱敏。';
+
+const AI_DEFAULTS = {
+  base: 'https://open.bigmodel.cn/api/paas/v4',
+  chat: 'glm-4.5-flash',
+  vision: 'glm-4.5v',
+  asr: 'glm-asr',
+  asrUrl: 'https://open.bigmodel.cn/api/paas/v4/audio/transcriptions',
+};
+function aiModels(){
+  const m = state.meta;
+  return {
+    chat: m.aiModelChat || AI_DEFAULTS.chat,
+    vision: m.aiModelVision || AI_DEFAULTS.vision,
+    asr: m.aiModelAsr || AI_DEFAULTS.asr,
+    asrUrl: m.aiAsrUrl || AI_DEFAULTS.asrUrl,
+  };
+}
+function needKey(){
+  if(state.meta.aiKey) return false;
+  toast('先到「我的 → AI 设置」粘贴 API Key'); return true;
+}
+async function callChat(messages, model, temperature, keyOverride){
+  const ctrl = new AbortController();
+  const tm = setTimeout(()=>ctrl.abort(), 90000);
+  try{
+    const r = await fetch(AI_DEFAULTS.base + '/chat/completions', {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'Authorization':'Bearer '+(keyOverride||state.meta.aiKey)},
+      body: JSON.stringify({model, messages, temperature: temperature==null?0.2:temperature}),
+      signal: ctrl.signal,
+    });
+    const data = await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error((data.error && data.error.message) || ('HTTP '+r.status));
+    const c = data.choices && data.choices[0] && data.choices[0].message;
+    return (c && c.content) || '';
+  } finally { clearTimeout(tm); }
+}
+async function callAsr(blob){
+  const m = aiModels();
+  const fd = new FormData();
+  fd.append('file', new File([blob], 'rec.'+((blob.type||'').includes('mp4')?'m4a':'webm'), {type: blob.type||'audio/mp4'}));
+  fd.append('model', m.asr);
+  const r = await fetch(m.asrUrl, {method:'POST', headers:{'Authorization':'Bearer '+state.meta.aiKey}, body:fd});
+  const data = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error((data.error && data.error.message) || ('HTTP '+r.status));
+  return data.text || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+}
+function extractJSON(txt){
+  const m = txt.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+  if(!m) throw new Error('AI 未返回可解析的结果：'+String(txt).slice(0,100));
+  return JSON.parse(m[0]);
+}
+function compressImage(file, maxSide, quality){
+  maxSide = maxSide||1600; quality = quality||0.85;
+  return new Promise((res,rej)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      const sc = Math.min(1, maxSide/Math.max(img.width, img.height));
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(img.width*sc); cv.height = Math.round(img.height*sc);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      cv.toBlob(b=> b?res(b):rej(new Error('图片处理失败')), 'image/jpeg', quality);
+    };
+    img.onerror = ()=>rej(new Error('图片读取失败'));
+    img.src = url;
+  });
+}
+const blobToDataURL = blob => new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(blob); });
+
+/* --- AI 设置 --- */
+function aiSheet(){
+  const m = state.meta;
+  sheet({ title:'AI 设置（智谱 GLM）', okText:'保存',
+    body:`<div class="form">
+      <label>API Key（bigmodel.cn 开放平台；只存本机，不进备份文件）</label>
+      <input type="password" id="ai-key" value="${esc(m.aiKey||'')}" placeholder="粘贴 key，留空＝关闭 AI 功能">
+      <button class="btn ghost block" id="ai-test" style="margin-top:10px">🔍 测试连接（用上方 key + 文字模型发一句 ping）</button>
+      <div id="ai-test-out" style="font-size:13px;color:var(--c-sub);margin-top:6px;white-space:pre-wrap"></div>
+      <label>文字模型</label><input id="ai-mc" value="${esc(m.aiModelChat||'')}" placeholder="${AI_DEFAULTS.chat}">
+      <label>视觉模型（拍单识别）</label><input id="ai-mv" value="${esc(m.aiModelVision||'')}" placeholder="${AI_DEFAULTS.vision}">
+      <label>语音转写模型</label><input id="ai-ma" value="${esc(m.aiModelAsr||'')}" placeholder="${AI_DEFAULTS.asr}">
+      <label>语音转写接口 URL（按智谱文档，转写失败时改这里）</label><input id="ai-au" value="${esc(m.aiAsrUrl||'')}" placeholder="${AI_DEFAULTS.asrUrl}">
+      <div class="tip" style="margin-top:10px">模型名默认值若与智谱当前文档不符，按文档改名即可。脱敏原则：任何含患者身份的内容不要原样发送。</div></div>`,
+    onOk: async el=>{
+      m.aiKey = el.querySelector('#ai-key').value.trim() || null;
+      m.aiModelChat = el.querySelector('#ai-mc').value.trim() || null;
+      m.aiModelVision = el.querySelector('#ai-mv').value.trim() || null;
+      m.aiModelAsr = el.querySelector('#ai-ma').value.trim() || null;
+      m.aiAsrUrl = el.querySelector('#ai-au').value.trim() || null;
+      await metaPut(m); renderMore(); toast('AI 设置已保存'); return true;
+    },
+    onMount: el=>{
+      el.querySelector('#ai-test').onclick = async ()=>{
+        const key = el.querySelector('#ai-key').value.trim();
+        const out = el.querySelector('#ai-test-out');
+        if(!key){ out.textContent = '先粘贴 API Key'; return; }
+        const model = el.querySelector('#ai-mc').value.trim() || AI_DEFAULTS.chat;
+        out.textContent = '测试中…';
+        const t0 = Date.now();
+        try{
+          const r = await callChat([{role:'user', content:'收到请只回复：连接成功'}], model, 0.1, key);
+          out.textContent = '✅ 连接成功（'+model+'，'+((Date.now()-t0)/1000)+'s）：'+String(r).slice(0,60);
+        }catch(err){
+          out.textContent = '❌ 失败：'+err.message+'\n（多为 key 不对 / 模型名不对 / 未开通对应模型权限）';
+        }
+      };
+    }});
+}
+
+/* --- AI 整理病史 --- */
+function hxAISheet(p){
+  if(needKey()) return;
+  sheet({ title:'🤖 AI 整理病史', okText:'发送到智谱云',
+    body:`<div class="form">
+      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin-bottom:10px">${PRIVACY_NOTE}</div>
+      <label>把病历/出院小结/病程里的病史部分粘贴到下面（先脱敏）</label>
+      <textarea id="hx-src" style="min-height:160px" placeholder="如：因反复发作性意识丧失3年入院，每次持续约1分钟……"></textarea>
+      <div id="hx-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div></div>`,
+    onOk: async el=>{
+      const src = el.querySelector('#hx-src').value.trim();
+      if(!src){ toast('先粘贴原文'); return false; }
+      const sh = el.closest('.sheet');
+      const okb = sh.querySelector('#sh-ok');
+      okb.textContent = 'AI 处理中…'; okb.disabled = true;
+      try{
+        const out = await callChat([
+          {role:'system', content:'你是神经外科病房的医生助理。从用户给出的原始记录中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。要求：只提取医学内容，忽略任何患者身份信息；原文没有的字段用空字符串；不要编造原文没有的内容；保持中文。'},
+          {role:'user', content: src}
+        ], aiModels().chat);
+        const j = extractJSON(out);
+        closeSheet();
+        hxResultSheet(p, j);
+        return true;
+      }catch(err){
+        el.querySelector('#hx-err').textContent = '失败：'+err.message;
+        okb.textContent = '发送到智谱云'; okb.disabled = false;
+        return false;
+      }
+    }});
+}
+function hxResultSheet(p, j){
+  sheet({ title:'AI 整理结果（逐项核对，可直接改）', okText:'采用并继续编辑',
+    body:`<div class="form">${[['主诉','chief'],['现病史','present'],['既往史','past'],['查体要点','exam']]
+      .map(([k,f])=>`<label>${k}</label><textarea id="ai-${f}">${esc(j[f]||'')}</textarea>`).join('')}</div>`,
+    onOk: async el2=>{
+      const vals = {
+        chief: el2.querySelector('#ai-chief').value.trim(),
+        present: el2.querySelector('#ai-present').value.trim(),
+        past: el2.querySelector('#ai-past').value.trim(),
+        exam: el2.querySelector('#ai-exam').value.trim(),
+      };
+      state.cur = p.id;
+      openPatient(p.id);
+      state.pTab='hx';
+      $('#p-seg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.pt==='hx'));
+      renderPBody();
+      hxAIApply(p, vals);
+      return true;
+    }});
+}
+function hxAIApply(p, pre){
+  const hh = pre || p.history || {};
+  sheet({ title:'编辑病史（AI 预填，核对后保存）', okText:'保存',
+    body:`<div class="form">
+      <label>主诉</label><textarea id="hx-chief">${esc(hh.chief||'')}</textarea>
+      <label>现病史</label><textarea id="hx-present" style="min-height:110px">${esc(hh.present||'')}</textarea>
+      <label>既往史</label><textarea id="hx-past">${esc(hh.past||'')}</textarea>
+      <label>查体要点</label><textarea id="hx-exam">${esc(hh.exam||'')}</textarea></div>`,
+    onOk: async el=>{
+      p.history = { chief:el.querySelector('#hx-chief').value.trim(),
+        present:el.querySelector('#hx-present').value.trim(),
+        past:el.querySelector('#hx-past').value.trim(),
+        exam:el.querySelector('#hx-exam').value.trim() };
+      await txPut('patients',p); await markChange(); renderPBody(); toast('病史已保存'); return true;
+    }});
+}
+
+/* --- 拍单识别检验检查 --- */
+function examAISheet(p){
+  if(needKey()) return;
+  let pickedBlob = null;
+  sheet({ title:'📷 拍单识别', hideOk:true,
+    body:`<div class="form">
+      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin-bottom:10px">${PRIVACY_NOTE}<br>建议先在相册裁掉患者信息条，只留报告内容。</div>
+      <div style="display:flex;gap:10px">
+        <button class="btn ghost" style="flex:1" id="ex-cam">📷 拍照</button>
+        <button class="btn ghost" style="flex:1" id="ex-alb">🖼 相册选图</button>
+      </div>
+      <input type="file" id="ex-file" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="ex-file2" accept="image/*" style="display:none">
+      <img id="ex-prev" style="display:none;width:100%;border-radius:10px;margin-top:10px">
+      <button class="btn block" id="ex-run" style="display:none;margin-top:10px">发送到智谱云识别</button>
+      <div id="ex-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div></div>`,
+    onMount: el=>{
+      const f1 = el.querySelector('#ex-file'), f2 = el.querySelector('#ex-file2');
+      const handle = async file=>{
+        if(!file) return;
+        pickedBlob = await compressImage(file);
+        const prev = el.querySelector('#ex-prev');
+        prev.src = await blobToDataURL(pickedBlob); prev.style.display='block';
+        el.querySelector('#ex-run').style.display='block';
+        el.querySelector('#ex-err').textContent='';
+      };
+      el.querySelector('#ex-cam').onclick = ()=> f1.click();
+      el.querySelector('#ex-alb').onclick = ()=> f2.click();
+      f1.onchange = e=> handle(e.target.files[0]);
+      f2.onchange = e=> handle(e.target.files[0]);
+      el.querySelector('#ex-run').onclick = async ()=>{
+        if(!pickedBlob) return;
+        const run = el.querySelector('#ex-run');
+        run.textContent = '识别中…'; run.disabled = true;
+        try{
+          const b64 = await blobToDataURL(pickedBlob);
+          const out = await callChat([
+            {role:'system', content:'你是检验/检查报告单识别助手。从图片中提取报告信息，只输出一个 JSON 对象：{"title":"报告项目名，如 血常规/头颅CT","date":"报告日期 YYYY-MM-DD，找不到则空字符串","findings":"关键异常结果与结论要点，逐条换行，只保留重要内容","important":true或false}。important=是否存在危急值或明显异常需重点关注。识别不了的字段留空，不要编造。'},
+            {role:'user', content:[
+              {type:'image_url', image_url:{url:b64}},
+              {type:'text', text:'提取这张报告单（已脱敏）的关键信息。'}
+            ]}
+          ], aiModels().vision, 0.1);
+          const j = extractJSON(out);
+          closeSheet();
+          examSheet(p.id, {
+            id: uid(), patientId: p.id, createdAt: Date.now(),
+            date: /^\d{4}-\d{2}-\d{2}$/.test(j.date||'') ? j.date : today(),
+            title: j.title || '拍照识别',
+            findings: j.findings || '',
+            important: !!j.important,
+          });
+          toast('识别完成，请核对后保存');
+        }catch(err){
+          el.querySelector('#ex-err').textContent = '失败：'+err.message;
+          run.textContent = '发送到智谱云识别'; run.disabled = false;
+        }
+      };
+    }});
+}
+
+/* --- 语音记待办 --- */
+function voiceSheet(){
+  if(needKey()) return;
+  const pts = activePts();
+  if(!pts.length) return toast('先在「病区」建患者');
+  let rec=null, chunks=[], timer=null, t0=0, parsed=[];
+  sheet({ title:'🎙️ 语音记录', hideOk:true,
+    body:`<div class="form">
+      <label>归属患者</label>
+      <select id="vc-pt">${pts.map(p=>`<option value="${p.id}">${esc(ptName(p))}</option>`).join('')}</select>
+      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin:10px 0">查房/谈话随手录：主任安排、问病史、家属谈话都行。尽量别提患者姓名（脱敏原则），说「这床 / 12床」。转写后可「拆解为待办」或「整理为病史」。</div>
+      <button class="btn block" id="vc-rec">🎙️ 开始录音</button>
+      <div id="vc-status" style="text-align:center;font-size:13px;color:var(--c-sub);margin-top:8px"></div>
+      <label id="vc-lb" style="display:none">转写文本（可改）</label>
+      <textarea id="vc-text" style="display:none;min-height:70px"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn block ghost" id="vc-parse" style="display:none">🤖 拆解为待办</button>
+        <button class="btn block ghost" id="vc-hx" style="display:none">🤖 整理为病史</button>
+      </div>
+      <div id="vc-list" style="margin-top:8px"></div>
+      <button class="btn block" id="vc-add" style="display:none;margin-top:8px">加入所选待办</button>
+      <div id="vc-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div></div>`,
+    onUnmount: ()=>{
+      if(timer) clearInterval(timer);
+      if(rec && rec.state==='recording'){ try{ rec.stop(); }catch(e){} }
+    },
+    onMount: el=>{
+      const recBtn = el.querySelector('#vc-rec');
+      recBtn.onclick = async ()=>{
+        if(rec && rec.state==='recording'){ rec.stop(); return; }
+        try{
+          const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+          chunks = [];
+          rec = new MediaRecorder(stream);
+          rec.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
+          rec.onstop = async ()=>{
+            stream.getTracks().forEach(t=>t.stop());
+            if(timer) clearInterval(timer);
+            recBtn.textContent = '🎙️ 重新录音';
+            el.querySelector('#vc-status').textContent = '转写中…';
+            const blob = new Blob(chunks, {type: rec.mimeType||'audio/mp4'});
+            try{
+              const txt = await callAsr(blob);
+              if(!txt.trim()) throw new Error('未识别到内容');
+              const ta = el.querySelector('#vc-text');
+              ta.value = txt; ta.style.display='block';
+              el.querySelector('#vc-lb').style.display='block';
+              el.querySelector('#vc-parse').style.display='block';
+              el.querySelector('#vc-hx').style.display='block';
+              el.querySelector('#vc-status').textContent = '已转写，可修改后拆解';
+            }catch(err){
+              el.querySelector('#vc-err').textContent = '转写失败：'+err.message;
+              el.querySelector('#vc-status').textContent = '';
+            }
+          };
+          rec.start();
+          t0 = Date.now();
+          recBtn.textContent = '⏹ 停止录音';
+          timer = setInterval(()=>{
+            const s = Math.round((Date.now()-t0)/1000);
+            el.querySelector('#vc-status').textContent = '录音中 '+s+'s（口述待办，说完点停止）';
+          }, 300);
+        }catch(err){
+          el.querySelector('#vc-err').textContent = '无法使用麦克风：'+err.message;
+        }
+      };
+      el.querySelector('#vc-parse').onclick = async ()=>{
+        const src = el.querySelector('#vc-text').value.trim();
+        if(!src) return toast('没有可拆解的文本');
+        const pb = el.querySelector('#vc-parse');
+        pb.textContent = 'AI 拆解中…'; pb.disabled = true;
+        try{
+          const out = await callChat([
+            {role:'system', content:'你是病房医生助理。把口述内容拆解为待办事项数组，只输出 JSON 数组，每项形如 {"text":"待办内容","due":"YYYY-MM-DD 或空字符串"}。口语转简洁书面待办；相对时间（明天/后天/周X）按今天 '+today()+' 换算；不编造内容。'},
+            {role:'user', content: src}
+          ], aiModels().chat);
+          parsed = extractJSON(out);
+          if(!Array.isArray(parsed) || !parsed.length) throw new Error('没拆出待办，可手动添加');
+          const box = el.querySelector('#vc-list');
+          box.innerHTML = parsed.map((t,i)=>`<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid var(--c-line)">
+            <input type="checkbox" checked data-i="${i}" style="margin-top:3px">
+            <span style="font-size:14px">${esc(t.text)}${t.due&&/^\d{4}-\d{2}-\d{2}$/.test(t.due)?` <span style="color:var(--c-danger);font-size:12px">${esc(md(t.due))}前</span>`:''}</span></label>`).join('');
+          el.querySelector('#vc-add').style.display='block';
+          pb.textContent = '🤖 重新拆解'; pb.disabled = false;
+        }catch(err){
+          el.querySelector('#vc-err').textContent = '拆解失败：'+err.message;
+          pb.textContent = '🤖 AI 拆解为待办'; pb.disabled = false;
+        }
+      };
+      el.querySelector('#vc-hx').onclick = async ()=>{
+        if(el.querySelector('#vc-add').style.display !== 'none'){
+          if(!await confirmBox('待办清单还没加入。整理病史会关闭本窗口，未加入的待办不保存。\n先去「加入所选待办」，还是继续？')) return;
+        }
+        const src = el.querySelector('#vc-text').value.trim();
+        if(!src) return toast('没有可整理的文本');
+        const p = ptById(el.querySelector('#vc-pt').value);
+        const hb = el.querySelector('#vc-hx');
+        hb.textContent = 'AI 整理中…'; hb.disabled = true;
+        try{
+          const out = await callChat([
+            {role:'system', content:'你是神经外科病房的医生助理。从这段录音转写（可能包含问病史、家属叙述、查房讨论）中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。只提取医学内容，忽略任何患者身份信息与与病史无关的安排、闲聊；原文没有的字段用空字符串；不要编造；保持中文。'},
+            {role:'user', content: src}
+          ], aiModels().chat);
+          const j = extractJSON(out);
+          closeSheet();
+          hxResultSheet(p, j);
+        }catch(err){
+          el.querySelector('#vc-err').textContent = '整理失败：'+err.message;
+          hb.textContent = '🤖 整理为病史'; hb.disabled = false;
+        }
+      };
+      el.querySelector('#vc-add').onclick = async ()=>{
+        const pid = el.querySelector('#vc-pt').value;
+        const items = parsed.filter((t,i)=>{
+          const cb = el.querySelector('input[data-i="'+i+'"]'); return cb && cb.checked;
+        });
+        if(!items.length) return toast('没勾选任何待办');
+        for(const t of items){
+          await addTodo(pid, String(t.text||'').trim(), t.due && /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : '');
+        }
+        renderAll(); closeSheet(); toast('已加入 '+items.length+' 条待办');
+      };
+    }});
+}
+
+/* ================= 框架导航 ================= */
+function switchTab(t){
+  state.tab=t;
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  $('#view-'+t).classList.add('on');
+  $('#bar-title').textContent = t==='ward'?'管床': t==='todos'?'待办':'我的';
+  $('#btn-add-pt').style.display = t==='ward' ? '' : 'none';
+  $('#main').scrollTop = 0;
+}
+function renderAll(){
+  renderWard(); renderTodos(); renderMore();
+  const n = openTodoAll().length;
+  const b1=$('#bdg-ward'), b2=$('#bdg-todos');
+  b2.textContent=n; b2.style.display = n?'':'none';
+  b1.style.display='none';
+}
+
+/* ================= 启动 ================= */
+(async function init(){
+  db = await openDB();
+  await loadAll();
+  importBackup();
+  $('#lock-ok').onclick = tryLock;
+  $('#lock-input').onkeydown = e=>{ if(e.key==='Enter') tryLock(); };
+  $('#lock-forgot').onclick = async ()=>{
+    if(!await confirmBox('重置将【清空全部数据】并取消 PIN！\n如果有备份文件，重置后可以导入恢复。确定重置？')) return;
+    await resetAll();
+  };
+  $('#lock-skip').onclick = async ()=>{
+    state.meta.pinSkipped = true;
+    await metaPut(state.meta);
+    sessionStorage.setItem('wardUnlocked','1');
+    $('#lock').style.display='none';
+    $('#app').classList.add('on');
+    renderAll();
+  };
+  $('#btn-add-pt').onclick = ()=> patientSheet(null);
+  document.querySelectorAll('.tabbar button').forEach(b=> b.onclick=()=>switchTab(b.dataset.tab));
+  $('#p-back').onclick = ()=>{ $('#ppage').classList.remove('on'); state.cur=null; renderAll(); };
+  $('#p-edit').onclick = ()=> patientSheet(state.cur);
+  $('#p-seg').querySelectorAll('button').forEach(b=> b.onclick=()=>{
+    state.pTab=b.dataset.pt;
+    $('#p-seg').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+    renderPBody();
+  });
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+  // 挂起恢复（同会话）且未设 PIN：直接进，免得每次冷启动都被强制设 PIN
+  if(sessionStorage.getItem('wardUnlocked')==='1' && !state.meta.pinHash){
+    $('#app').classList.add('on'); renderAll(); return;
+  }
+  // 有 PIN → 输 PIN；从未设置且从未跳过 → 首次引导；跳过过 → 直接进
+  if(state.meta.pinHash || !state.meta.pinSkipped){ showLock(); return; }
+  $('#app').classList.add('on'); renderAll();
+})();
+</script>
+</body>
+</html>
