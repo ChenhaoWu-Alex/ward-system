@@ -633,7 +633,7 @@ function renderPBody(){
         <button class="btn danger block" id="pv-out" style="background:#fbeeeb;color:var(--c-danger);margin:6px 0">${p.status==='在院'?'出院 / 转科归档':'恢复为在院'}</button>
       </div>`;
     bindTodoOps(el);
-    $('#pv-note').onclick = editPatient.bind(null, p.id, true);
+    $('#pv-note').onclick = patientSheet.bind(null, p.id, true);
     const doAdd = async ()=>{ const v=$('#pv-txt').value.trim(); if(!v) return;
       await addTodo(p.id, v); $('#pv-txt').value=''; renderPBody(); renderAll(); };
     $('#pv-add').onclick = doAdd;
