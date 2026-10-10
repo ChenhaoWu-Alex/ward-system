@@ -288,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '2.4.0';
+const APP_VER = '2.5.0';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -521,6 +521,8 @@ function renderNotes(){
       h += `<div class="todo-group"><div class="g-head">${esc(d)} · ${list.length}</div><div class="card" style="padding:2px 12px">`+
         list.map(n=>`<div class="todo" data-id="${n.id}">
           <div class="txt"><div class="t1" style="white-space:pre-wrap">${n.type==='advice'?'<span style="background:#fbeeeb;color:var(--c-danger);font-size:11px;padding:1px 6px;border-radius:8px;margin-right:6px">指导意见</span>':''}${esc(n.text)}</div>${noteImgs(n).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${noteImgs(n).map(b=>`<img src="${b}" style="height:64px;border-radius:8px">`).join('')}</div>`:''}<div class="t2">${noteTypeLabel(n.type)} · ${esc(md(isoToDate(n.createdAt)))}</div></div>
+          ${n.type==='advice'?'<button class="arc" data-op="todo" title="转为待办">→待办</button>':''}
+          <button class="arc" data-op="edit" title="编辑">✎</button>
           <button class="del" data-op="del">✕</button></div>`).join('')+
         `</div></div>`;
     }
@@ -540,6 +542,18 @@ function renderNotes(){
   el.querySelectorAll('[data-ntf]').forEach(b=>{
     b.onclick = ()=>{ state.noteFilter = b.dataset.ntf; renderNotes(); };
   });
+  el.querySelectorAll('[data-op=edit]').forEach(b=>{
+    b.onclick = ()=>{
+      const n = state.notes.find(x=>x.id===b.closest('.todo').dataset.id);
+      if(n) noteEditSheet(n);
+    };
+  });
+  el.querySelectorAll('[data-op=todo]').forEach(b=>{
+    b.onclick = ()=>{
+      const n = state.notes.find(x=>x.id===b.closest('.todo').dataset.id);
+      if(n) noteToTodoSheet(n);
+    };
+  });
   el.querySelectorAll('.todo .del').forEach(b=>{
     b.onclick = async ()=>{
       const id = b.closest('.todo').dataset.id;
@@ -548,6 +562,52 @@ function renderNotes(){
       await markChange(); renderNotes();
     };
   });
+}
+/* 编辑临床记录（文本/类型/科室均可改） */
+function noteEditSheet(n){
+  const depts = [...new Set(state.notes.map(x=>x.dept).filter(Boolean))];
+  sheet({ title:'✎ 编辑临床记录', okText:'保存',
+    body:`<div class="form">
+      <div class="quick">
+        <select id="ne-type" style="flex:0 0 92px">
+          <option value="note" ${n.type!=='advice'?'selected':''}>心得</option>
+          <option value="advice" ${n.type==='advice'?'selected':''}>指导意见</option>
+        </select>
+        <input id="ne-dept" list="ne-depts" value="${esc(n.dept||'')}" placeholder="科室" style="flex:1">
+        <datalist id="ne-depts">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+      </div>
+      <label>内容</label>
+      <textarea id="ne-text" style="min-height:110px">${esc(n.text)}</textarea>
+      ${n.imgs&&n.imgs.length?`<div class="tip">此条含 ${n.imgs.length} 张图片（随记录保留）</div>`:''}</div>`,
+    onOk: async el=>{
+      const text = el.querySelector('#ne-text').value.trim();
+      if(!text){ toast('内容不能为空'); return false; }
+      n.type = el.querySelector('#ne-type').value;
+      n.dept = el.querySelector('#ne-dept').value.trim() || n.dept;
+      n.text = text;
+      await txPut('notes', n); await markChange(); renderNotes(); toast('已保存'); return true;
+    }});
+}
+/* 指导意见 → 待办（按文本中的床号自动匹配患者） */
+function noteToTodoSheet(n){
+  const pts = activePts();
+  const bedMatch = (n.text.match(/[0-9]{1,3}床/)||[])[0];
+  const matched = bedMatch ? state.patients.find(p=>String(p.bed||'').replace(/床$/,'')===bedMatch.replace('床','') && p.status==='在院') : null;
+  sheet({ title:'🩺 指导意见 → 待办', okText:'加入待办',
+    body:`<div class="form">
+      <div class="card" style="font-size:13px;white-space:pre-wrap">${esc(n.text)}</div>
+      <label>归属患者${matched?('（按床号自动匹配：'+esc(ptName(matched))+'）'):''}</label>
+      ${pts.length?`<select id="ntd-pt">${pts.map(p=>`<option value="${p.id}" ${matched&&p.id===matched.id?'selected':''}>${esc(ptName(p))}</option>`).join('')}</select>`:'<div class="empty">病区没有在院患者</div>'}
+      <label>截止日期（可空）</label>
+      <input type="date" id="ntd-due">
+      <div id="ntd-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
+    onOk: async el=>{
+      const sel = el.querySelector('#ntd-pt');
+      if(!sel || !sel.value){ toast('病区没有在院患者，无法归属'); return false; }
+      const due = el.querySelector('#ntd-due').value;
+      await addTodo(sel.value, n.text, due);
+      renderAll(); toast('已加入待办'); return true;
+    }});
 }
 function openNotesPage(){ renderNotes(); $('#notes-page').classList.add('on'); }
 function todoRow(t, doneView){
@@ -1373,7 +1433,7 @@ const PRIVACY_NOTE = '⚠️ 隐私确认：你选择了「只处理脱敏内容
 const AI_PROMPTS = {
   hx: '你是神经外科病房的医生助理。从用户给出的原始记录中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。要求：只提取医学内容，忽略任何患者身份信息；原文没有的字段用空字符串；不要编造原文没有的内容；保持中文。',
   exam: '你是检验/检查报告单识别助手。从图片中提取报告信息，只输出一个 JSON 对象：{"title":"报告项目名，如 血常规/头颅CT","date":"报告日期 YYYY-MM-DD，找不到则空字符串","findings":"关键异常结果与结论要点，逐条换行，只保留重要内容","important":true或false}。important=是否存在危急值或明显异常需重点关注。识别不了的字段留空，不要编造。',
-  todo: '你是病房医生助理。把口述内容拆解为待办事项数组，只输出 JSON 数组，每项形如 {"text":"待办内容","due":"YYYY-MM-DD 或空字符串"}。口语转简洁书面待办；相对时间（明天/后天/周X）按今天 __TODAY__ 换算；不编造内容。',
+  todo: '你是病房医生助理。把口述内容拆解为待办事项数组，只输出 JSON 数组，每项形如 {"text":"待办内容","due":"YYYY-MM-DD 或空字符串"}。口语转简洁书面待办；相对时间（明天/后天/周X）按今天 __TODAY__ 换算；涉及病历书写或修改的指示（补记手术记录、修改现病史、完善病历各部分等）也是待办，文本以【病历】开头并写明床号，如【病历】12床补写手术记录；不编造内容。',
   voice_hx: '你是神经外科病房的医生助理。从这段录音转写（可能包含问病史、家属叙述、查房讨论）中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。只提取医学内容，忽略任何患者身份信息与与病史无关的安排、闲聊；原文没有的字段用空字符串；不要编造；保持中文。'
 };
 /* 取实际生效的指令：用户在 Provider 界面自定义过的优先，否则用内置 */
