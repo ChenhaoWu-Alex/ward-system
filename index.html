@@ -288,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '2.5.0';
+const APP_VER = '2.7.0';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -496,14 +496,18 @@ function renderNotes(){
   const el = $('#np-body'); if(!el) return;
   const depts = [...new Set(state.notes.map(n=>n.dept||'未分科'))];
   let h = `<div class="quick" style="margin-top:10px">
-    <select id="nt-type" style="flex:0 0 92px">
+    <select id="nt-type" style="flex:0 0 88px">
       <option value="note">心得</option>
       <option value="advice">指导意见</option>
     </select>
-    <input id="nt-dept" list="dept-list" placeholder="科室" style="flex:0 0 92px" value="${esc(curDept()||state.lastDept||'')}">
-    <datalist id="dept-list">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+    <select id="nt-dept-sel" style="flex:0 0 108px">
+      <option value="__new">➕ 新增科室…</option>
+    </select>
     <input id="nt-txt" placeholder="一句心得、老师要点、查房指导意见…">
     <button class="btn" id="nt-add">记</button></div>
+  <div id="nt-dept-new-row" style="display:none;margin-top:6px">
+    <input id="nt-dept-new" placeholder="新科室名，保存后加入下拉">
+  </div>
   <div class="quick" style="margin-top:6px">
     ${[['','全部'],['note','💡 心得'],['advice','🩺 指导意见']].map(([v,l])=>`<button class="btn sm ${state.noteFilter===v?'':'ghost'}" data-ntf="${v}" style="flex:1">${l}</button>`).join('')}
   </div>
@@ -520,7 +524,7 @@ function renderNotes(){
       const list = filtered.filter(n=>(n.dept||'未分科')===d).sort((a,b)=>b.createdAt-a.createdAt);
       h += `<div class="todo-group"><div class="g-head">${esc(d)} · ${list.length}</div><div class="card" style="padding:2px 12px">`+
         list.map(n=>`<div class="todo" data-id="${n.id}">
-          <div class="txt"><div class="t1" style="white-space:pre-wrap">${n.type==='advice'?'<span style="background:#fbeeeb;color:var(--c-danger);font-size:11px;padding:1px 6px;border-radius:8px;margin-right:6px">指导意见</span>':''}${esc(n.text)}</div>${noteImgs(n).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${noteImgs(n).map(b=>`<img src="${b}" style="height:64px;border-radius:8px">`).join('')}</div>`:''}<div class="t2">${noteTypeLabel(n.type)} · ${esc(md(isoToDate(n.createdAt)))}</div></div>
+          <div class="txt"><div class="t1" style="line-height:1.55">${n.type==='advice'?'<span style="background:#fbeeeb;color:var(--c-danger);font-size:11px;padding:1px 6px;border-radius:8px;margin-right:6px">指导意见</span>':''}${mdRender(n.text)}</div>${noteImgs(n).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${noteImgs(n).map(b=>`<img src="${b}" style="height:64px;border-radius:8px">`).join('')}</div>`:''}<div class="t2">${noteTypeLabel(n.type)} · ${esc(md(isoToDate(n.createdAt)))}</div></div>
           ${n.type==='advice'?'<button class="arc" data-op="todo" title="转为待办">→待办</button>':''}
           <button class="arc" data-op="edit" title="编辑">✎</button>
           <button class="del" data-op="del">✕</button></div>`).join('')+
@@ -528,9 +532,23 @@ function renderNotes(){
     }
   }
   el.innerHTML = h;
+  // 科室下拉：全部历史科室 + 当前科室默认选中；「新增」选项展开输入行
+  const deptSel = $('#nt-dept-sel');
+  const deptList = [...new Set([
+    ...state.notes.map(n=>n.dept), ...state.patients.map(p=>p.dept),
+    ...state.plays.map(p=>p.dept), state.lastDept, curDept()
+  ].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+  const cur = curDept() || state.lastDept || deptList[0];
+  deptSel.innerHTML = deptList.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('')
+    + '<option value="__new">➕ 新增科室…</option>';
+  const newBtn = el.querySelector('#nt-dept-new-row');
+  const syncNewRow = ()=>{ newBtn.style.display = deptSel.value==='__new' ? 'block' : 'none'; };
+  if(!deptList.length){ newBtn.style.display='block'; }
+  deptSel.onchange = syncNewRow;
   const add = async ()=>{
     const txt = $('#nt-txt').value.trim(); if(!txt) return toast('先写内容');
-    const dept = $('#nt-dept').value.trim();
+    const dept = (deptSel.value==='__new' ? $('#nt-dept-new').value.trim() : deptSel.value);
+    if(!dept) return toast('选科室或填新科室名');
     const n = { id:uid(), dept, type:$('#nt-type').value, text:txt, createdAt:Date.now() };
     await txPut('notes', n); state.notes.push(n); state.lastDept = dept;
     await markChange(); renderNotes(); toast('已记下（'+noteTypeLabel(n.type)+'）');
@@ -569,12 +587,14 @@ function noteEditSheet(n){
   sheet({ title:'✎ 编辑临床记录', okText:'保存',
     body:`<div class="form">
       <div class="quick">
-        <select id="ne-type" style="flex:0 0 92px">
+        <select id="ne-type" style="flex:0 0 88px">
           <option value="note" ${n.type!=='advice'?'selected':''}>心得</option>
           <option value="advice" ${n.type==='advice'?'selected':''}>指导意见</option>
         </select>
-        <input id="ne-dept" list="ne-depts" value="${esc(n.dept||'')}" placeholder="科室" style="flex:1">
-        <datalist id="ne-depts">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+        <select id="ne-dept-sel" style="flex:0 0 108px"></select>
+      </div>
+      <div id="ne-dept-new-row" style="display:none">
+        <input id="ne-dept-new" placeholder="新科室名">
       </div>
       <label>内容</label>
       <textarea id="ne-text" style="min-height:110px">${esc(n.text)}</textarea>
@@ -582,10 +602,22 @@ function noteEditSheet(n){
     onOk: async el=>{
       const text = el.querySelector('#ne-text').value.trim();
       if(!text){ toast('内容不能为空'); return false; }
+      const sel = el.querySelector('#ne-dept-sel');
+      const nd = (sel.value==='__new' ? el.querySelector('#ne-dept-new').value.trim() : sel.value) || n.dept;
       n.type = el.querySelector('#ne-type').value;
-      n.dept = el.querySelector('#ne-dept').value.trim() || n.dept;
+      n.dept = nd;
       n.text = text;
       await txPut('notes', n); await markChange(); renderNotes(); toast('已保存'); return true;
+    },
+    onMount: el=>{
+      const sel = el.querySelector('#ne-dept-sel');
+      const list = [...new Set([...state.notes.map(x=>x.dept), n.dept].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+      sel.innerHTML = list.map(d=>`<option value="${esc(d)}" ${d===n.dept?'selected':''}>${esc(d)}</option>`).join('')
+        + '<option value="__new">➕ 新增科室…</option>';
+      const row = el.querySelector('#ne-dept-new-row');
+      const sync = ()=>{ row.style.display = sel.value==='__new' ? 'block' : 'none'; };
+      if(!list.some(d=>d===n.dept)){ sel.value='__new'; el.querySelector('#ne-dept-new').value = n.dept||''; }
+      sel.onchange = sync; sync();
     }});
 }
 /* 指导意见 → 待办（按文本中的床号自动匹配患者） */
@@ -1018,6 +1050,21 @@ function exportExcel(){
 }
 /* --- Word：HTML 兼容格式 .doc，Word/WPS 直接打开，A4 可打印 --- */
 function wesc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* 轻量 Markdown 渲染（安全：先转义再转换，只注入自有 <b> 标签）：
+ * 支持 # 标题 / - 或 · 列表 / **加粗** / 换行；心得与指导意见可读化用 */
+function mdRender(s){
+  const lines = wesc(s).split('\n');
+  const out = [];
+  for(const ln of lines){
+    const h = ln.match(/^#{1,4}\s+(.*)/);
+    if(h){ out.push('<b style="font-size:13px">'+h[1]+'</b>'); continue; }
+    const li = ln.match(/^\s*[-*·]\s+(.*)/);
+    if(li){ out.push('<span style="color:var(--c-main)">•</span> '+li[1]); continue; }
+    let x = ln.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+    out.push(x);
+  }
+  return out.join('<br>');
+}
 /* Word 文档公共头（样式全平台通用）：全量导出与临床记录导出共用 */
 const WORD_HEAD = `<head><meta charset="utf-8"><title>海马数据导出</title>
 <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
@@ -1048,7 +1095,7 @@ function buildWordHtml(){
   }).join('<br clear="all" style="page-break-before:always">');
   const notes = state.notes.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const noteSec = notes.length? `<br clear="all" style="page-break-before:always"><h1>速记 · 心得与指导意见</h1>` + notes.map(n=>
-    `<p><b>${wesc(noteTypeLabel(n.type))} · ${wesc(n.dept||'未分科')}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${noteImgs(n).map(b=>`<br><img src="${b}" style="max-width:70%">`).join('')}</p>`).join('') : '';
+    `<p><b>${wesc(noteTypeLabel(n.type))} · ${wesc(n.dept||'未分科')}</b> <span class="sub">${fts(n.createdAt)}</span><br>${mdRender(n.text)}${noteImgs(n).map(b=>`<br><img src="${b}" style="max-width:70%">`).join('')}</p>`).join('') : '';
   return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 ${WORD_HEAD}
 <body><h1>海马 Hippocampus · 管床数据</h1><p class="sub">导出时间：${fts(Date.now())} · 患者 ${pts.length} 人（在院 ${pts.filter(p=>p.status==='在院').length}）· 本文件含真实诊疗信息，注意保管</p>${body}${noteSec}</body></html>`;
@@ -1222,16 +1269,20 @@ function noteImageSheet(){
       <label style="margin-top:10px">记录内容（AI 整理结果或自己写的，可改）</label>
       <textarea id="ni-text" style="min-height:80px" placeholder="拍照/选图后点 AI 整理；也可以直接写"></textarea>
       <div class="quick" style="margin-top:8px">
-        <select id="ni-type" style="flex:0 0 92px"><option value="note">心得</option><option value="advice">指导意见</option></select>
-        <input id="ni-dept" list="ni-depts" placeholder="科室" style="flex:1" value="${esc(curDept()||state.lastDept||'')}">
-        <datalist id="ni-depts">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+        <select id="ni-type" style="flex:0 0 88px"><option value="note">心得</option><option value="advice">指导意见</option></select>
+        <select id="ni-dept-sel" style="flex:0 0 108px"></select>
+      </div>
+      <div id="ni-dept-new-row" style="display:none;margin-top:6px">
+        <input id="ni-dept-new" placeholder="新科室名">
       </div>
       <div id="ni-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div>
       <div class="tip" style="margin-top:8px">可一次提交多张图（板书多页、多张报告单），AI 一起分析。图片压缩后随记录保存在本机、随备份带走；AI 整理失败也不影响直接保存。</div></div>`,
     onOk: async el=>{
       const text = el.querySelector('#ni-text').value.trim();
       if(!text && !imgs.length){ el.querySelector('#ni-err').textContent = '内容和图片至少要有一个'; return false; }
-      const n = { id:uid(), dept: el.querySelector('#ni-dept').value.trim() || curDept() || '未分科',
+      const dsel = el.querySelector('#ni-dept-sel');
+      const dept = (dsel.value==='__new' ? el.querySelector('#ni-dept-new').value.trim() : dsel.value) || curDept() || '未分科';
+      const n = { id:uid(), dept,
         type: el.querySelector('#ni-type').value, text, imgs: imgs.length?imgs.slice():null, createdAt: Date.now() };
       await txPut('notes', n); state.notes.push(n); state.lastDept = n.dept;
       await markChange(); renderNotes(); toast('图片记录已保存（'+(imgs.length||0)+' 张图）'); return true;
@@ -1279,6 +1330,19 @@ function noteImageSheet(){
         }
       };
       renderPrev();
+      // 科室下拉：历史科室+新增
+      const dsel = el.querySelector('#ni-dept-sel');
+      const cur = curDept() || state.lastDept;
+      const dlist = [...new Set([
+        ...state.notes.map(x=>x.dept), ...state.patients.map(x=>x.dept),
+        ...state.plays.map(x=>x.dept), state.lastDept, curDept()
+      ].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+      dsel.innerHTML = dlist.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('')
+        + '<option value="__new">➕ 新增科室…</option>';
+      const drow = el.querySelector('#ni-dept-new-row');
+      const dsync = ()=>{ drow.style.display = dsel.value==='__new' ? 'block' : 'none'; };
+      if(!dlist.length && !cur){ dsel.value='__new'; }
+      dsel.onchange = dsync; dsync();
     }});
 }
 
@@ -1295,7 +1359,7 @@ function buildNotesWordDoc(typeF, deptF){
   list.forEach(n=>{ const d = n.dept||'未分科'; (groups[d]=groups[d]||[]).push(n); });
   const body = Object.keys(groups).sort((a,b)=>a.localeCompare(b,'zh')).map(d=>
     `<h2>${wesc(d)} · ${groups[d].length} 条</h2>` + groups[d].map(n=>
-      `<p><b>${wesc(noteTypeLabel(n.type))}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${noteImgs(n).map(b=>`<br><img src="${b}">`).join('')}</p>`).join('')).join('');
+      `<p><b>${wesc(noteTypeLabel(n.type))}</b> <span class="sub">${fts(n.createdAt)}</span><br>${mdRender(n.text)}${noteImgs(n).map(b=>`<br><img src="${b}">`).join('')}</p>`).join('')).join('');
   return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 ${WORD_HEAD}
 <body><h1>临床记录 · ${wesc(typeText)}</h1><p class="sub">范围：${wesc(deptText)} · 共 ${list.length} 条 · 导出时间：${fts(Date.now())} · 含真实临床信息，注意保管</p>${body}</body></html>`;
@@ -1432,7 +1496,7 @@ const PRIVACY_NOTE = '⚠️ 隐私确认：你选择了「只处理脱敏内容
 /* 内置 AI 指令：__TODAY__ 会在发送时替换成当天日期；Provider 界面可自定义覆盖 */
 const AI_PROMPTS = {
   hx: '你是神经外科病房的医生助理。从用户给出的原始记录中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。要求：只提取医学内容，忽略任何患者身份信息；原文没有的字段用空字符串；不要编造原文没有的内容；保持中文。',
-  exam: '你是检验/检查报告单识别助手。从图片中提取报告信息，只输出一个 JSON 对象：{"title":"报告项目名，如 血常规/头颅CT","date":"报告日期 YYYY-MM-DD，找不到则空字符串","findings":"关键异常结果与结论要点，逐条换行，只保留重要内容","important":true或false}。important=是否存在危急值或明显异常需重点关注。识别不了的字段留空，不要编造。',
+  exam: '你是检验/检查报告单识别助手。用户可能一次提供一张或多张图片（不同类型的检验检查、影像报告、心电图，或同一份报告的多页）。把每份报告识别为一条记录，只输出一个 JSON 数组，每项形如 {"title":"报告项目名，如 血常规/头颅CT/心电图","date":"报告日期 YYYY-MM-DD，找不到则空字符串","findings":"结论与关键结果","important":true或false}。findings 必须结论先行：第一行写"结论：…"（诊断意见或最重要的异常），随后每行写一个关键异常值或具体描述；同一份报告的多页合并为一条，不同报告拆分为多条；important=是否存在危急值或明显异常需重点关注。识别不了的字段留空，不要编造。',
   todo: '你是病房医生助理。把口述内容拆解为待办事项数组，只输出 JSON 数组，每项形如 {"text":"待办内容","due":"YYYY-MM-DD 或空字符串"}。口语转简洁书面待办；相对时间（明天/后天/周X）按今天 __TODAY__ 换算；涉及病历书写或修改的指示（补记手术记录、修改现病史、完善病历各部分等）也是待办，文本以【病历】开头并写明床号，如【病历】12床补写手术记录；不编造内容。',
   voice_hx: '你是神经外科病房的医生助理。从这段录音转写（可能包含问病史、家属叙述、查房讨论）中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。只提取医学内容，忽略任何患者身份信息与与病史无关的安排、闲聊；原文没有的字段用空字符串；不要编造；保持中文。'
 };
@@ -1842,63 +1906,80 @@ function hxAIApply(p, pre){
 /* --- 拍单识别检验检查 --- */
 function examAISheet(p){
   if(needKey()) return;
-  let pickedBlob = null;
-  sheet({ title:'📷 拍单识别', hideOk:true,
+  let imgs = [];   // 压缩后的 dataURL 数组（支持多张：多页报告单一起识别）
+  sheet({ title:'📷 拍单识别 · '+ptName(p), hideOk:true,
     body:`<div class="form">
-      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin-bottom:10px">${PRIVACY_NOTE}<br>建议先在相册裁掉患者信息条，只留报告内容。</div>
+      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin-bottom:10px">${PRIVACY_NOTE}<br>建议先在相册裁掉患者信息条，只留报告内容。可提交多张（多页报告一起识别）。</div>
       <div style="display:flex;gap:10px">
         <button class="btn ghost" style="flex:1" id="ex-cam">📷 拍照</button>
-        <button class="btn ghost" style="flex:1" id="ex-alb">🖼 相册选图</button>
+        <button class="btn ghost" style="flex:1" id="ex-alb">🖼 选图（可多张）</button>
       </div>
       <input type="file" id="ex-file" accept="image/*" capture="environment" style="display:none">
-      <input type="file" id="ex-file2" accept="image/*" style="display:none">
-      <img id="ex-prev" style="display:none;width:100%;border-radius:10px;margin-top:10px">
+      <input type="file" id="ex-file2" accept="image/*" multiple style="display:none">
+      <div id="ex-prevs" style="display:none;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
       <button class="btn block" id="ex-run" style="display:none;margin-top:10px">发送到智谱云识别</button>
       <div id="ex-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div></div>`,
     onMount: el=>{
       const f1 = el.querySelector('#ex-file'), f2 = el.querySelector('#ex-file2');
-      const handle = async file=>{
-        if(!file) return;
-        pickedBlob = await compressImage(file);
-        const prev = el.querySelector('#ex-prev');
-        prev.src = await blobToDataURL(pickedBlob); prev.style.display='block';
-        el.querySelector('#ex-run').style.display='block';
+      const prevs = el.querySelector('#ex-prevs');
+      const renderPrev = ()=>{
+        prevs.innerHTML = imgs.map((b,i)=>`<div style="position:relative;flex:0 0 auto">
+          <img src="${b}" style="height:76px;border-radius:8px;display:block">
+          <button data-rm="${i}" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#c0392b;color:#fff;font-size:11px;line-height:1">✕</button>
+        </div>`).join('');
+        prevs.style.display = imgs.length?'flex':'none';
+        el.querySelector('#ex-run').style.display = imgs.length?'block':'none';
+        prevs.querySelectorAll('[data-rm]').forEach(b=> b.onclick = ()=>{ imgs.splice(+b.dataset.rm,1); renderPrev(); });
+      };
+      const handle = async files=>{
+        if(!files || !files.length) return;
         el.querySelector('#ex-err').textContent='';
+        for(const file of files){
+          imgs.push(await blobToDataURL(await compressImage(file)));
+        }
+        renderPrev();
       };
       el.querySelector('#ex-cam').onclick = ()=> f1.click();
       el.querySelector('#ex-alb').onclick = ()=> f2.click();
-      f1.onchange = e=> handle(e.target.files[0]);
-      f2.onchange = e=> handle(e.target.files[0]);
+      f1.onchange = e=> handle(e.target.files);
+      f2.onchange = e=> handle(e.target.files);
       el.querySelector('#ex-run').onclick = async ()=>{
-        if(!pickedBlob) return;
+        if(!imgs.length) return;
         const run = el.querySelector('#ex-run');
-        run.textContent = '识别中…'; run.disabled = true;
+        run.textContent = '识别中（'+imgs.length+' 张图）…'; run.disabled = true;
         try{
-          const b64 = await blobToDataURL(pickedBlob);
+          const content = imgs.map(b=>({type:'image_url', image_url:{url:b}}));
+          content.push({type:'text', text:'以上是 '+imgs.length+' 张报告单照片（可能含多种检验检查/影像报告，已脱敏）。按报告拆分为多条记录，综合识别。'});
           const out = await callChat([
             {role:'system', content: sysPrompt('exam')},
-            {role:'user', content:[
-              {type:'image_url', image_url:{url:b64}},
-              {type:'text', text:'提取这张报告单（已脱敏）的关键信息。'}
-            ]}
+            {role:'user', content}
           ], aiModels().vision, 0.1);
           const j = extractJSON(out);
-          closeSheet();
-          examSheet(p.id, {
-            id: uid(), patientId: p.id, createdAt: Date.now(),
-            source: '本院',
-            date: /^\d{4}-\d{2}-\d{2}$/.test(j.date||'') ? j.date : today(),
-            reportDate: /^\d{4}-\d{2}-\d{2}$/.test(j.date||'') ? j.date : null,
-            title: j.title || '拍照识别',
-            findings: j.findings || '',
-            important: !!j.important,
-          });
-          toast('识别完成，请核对后保存');
+          const items = Array.isArray(j) ? j : [j];
+          if(!items.length) throw new Error('未识别到报告内容');
+          // 多报告直接入库，随后出汇总清单
+          const created = [];
+          for(const it of items){
+            const rec = { id: uid(), patientId: p.id, createdAt: Date.now(),
+              source: '本院',
+              date: /^\d{4}-\d{2}-\d{2}$/.test(it.date||'') ? it.date : today(),
+              reportDate: /^\d{4}-\d{2}-\d{2}$/.test(it.date||'') ? it.date : null,
+              title: it.title || '拍照识别',
+              findings: it.findings || '',
+              important: !!it.important };
+            await txPut('exams', rec); state.exams.push(rec); created.push(rec);
+          }
+          await markChange(); renderPBody(); renderWard(); renderAll(); closeSheet();
+          sheet({ title:'✅ 已识别 '+created.length+' 条检验检查', hideOk:true,
+            body:`<div class="form">
+              ${created.map(x=>`<div class="card" style="margin-bottom:6px"><b>${esc(x.title)}</b> <span class="sub">${esc(md(x.date))}</span><div style="font-size:13px;white-space:pre-wrap;margin-top:4px">${esc(x.findings)}</div></div>`).join('')}
+              <div class="tip">已直接保存，可到「检验检查」标签核对、修改；危急值已标重要。</div></div>`});
         }catch(err){
           el.querySelector('#ex-err').textContent = '失败：'+err.message;
           run.textContent = '发送到智谱云识别'; run.disabled = false;
         }
       };
+      renderPrev();
     }});
 }
 
