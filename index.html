@@ -288,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '1.11.1';
+const APP_VER = '2.2.0';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -328,7 +328,10 @@ async function metaGet(){ return (await txAll('meta')).find(x=>x.k==='main') || 
 const metaPut = m => txPut('meta', m);
 
 /* ================= 状态 ================= */
-const state = { patients:[], todos:[], exams:[], notes:[], plays:[], meta:{k:'main'}, tab:'ward', cur:null, pTab:'ov', showDone:false, showOut:false, lastDept:'', lastPlay:'' };
+const state = { patients:[], todos:[], exams:[], notes:[], plays:[], meta:{k:'main'}, tab:'ward', cur:null, pTab:'ov', showDone:false, showOut:false, lastDept:'', lastPlay:'', noteFilter:'' };
+/* 速记类型：note=科室心得，advice=病历指导意见（上级查房意见等） */
+const NOTE_TYPES = { note:'心得', advice:'指导意见' };
+const noteTypeLabel = t => NOTE_TYPES[t] || '心得';
 
 function sortPt(a,b){ const A=(a.bed||'').trim(), B=(b.bed||'').trim();
   const na=parseFloat(A), nb=parseFloat(B);
@@ -407,6 +410,7 @@ function renderWard(){
   let h = `<div class="quick-entrys">
     <button class="ent" id="ent-todos">✅ 待办${nTodos?` (${nTodos})`:''}</button>
     <button class="ent" id="ent-voice">🎙️ 语音</button>
+    <button class="ent" id="ent-photo">📷 拍照</button>
     <button class="ent" id="ent-notes">💡 速记</button>
   </div>`;
   if(!pts.length && !outs.length){
@@ -428,6 +432,7 @@ function renderWard(){
   });
   const et=$('#ent-todos'); if(et) et.onclick = ()=>{ if(!state.patients.length) return toast('先在病区建患者'); openTodosPage(); };
   const ev=$('#ent-voice'); if(ev) ev.onclick = ()=>{ if(!activePts().length) return toast('先在病区建患者'); voiceSheet(); };
+  const ep=$('#ent-photo'); if(ep) ep.onclick = noteImageSheet;
   const en=$('#ent-notes'); if(en) en.onclick = openNotesPage;
 }
 function ptCard(p){
@@ -490,18 +495,31 @@ function renderNotes(){
   const el = $('#np-body'); if(!el) return;
   const depts = [...new Set(state.notes.map(n=>n.dept||'未分科'))];
   let h = `<div class="quick" style="margin-top:10px">
+    <select id="nt-type" style="flex:0 0 92px">
+      <option value="note">心得</option>
+      <option value="advice">指导意见</option>
+    </select>
     <input id="nt-dept" list="dept-list" placeholder="科室" style="flex:0 0 92px" value="${esc(curDept()||state.lastDept||'')}">
     <datalist id="dept-list">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
-    <input id="nt-txt" placeholder="一句心得、老师要点、科室套路…">
-    <button class="btn" id="nt-add">记</button></div>`;
+    <input id="nt-txt" placeholder="一句心得、老师要点、查房指导意见…">
+    <button class="btn" id="nt-add">记</button></div>
+  <div class="quick" style="margin-top:6px">
+    ${[['','全部'],['note','💡 心得'],['advice','🩺 指导意见']].map(([v,l])=>`<button class="btn sm ${state.noteFilter===v?'':'ghost'}" data-ntf="${v}" style="flex:1">${l}</button>`).join('')}
+  </div>
+  <button class="btn ghost block" id="nt-photo" style="margin-top:6px">📷 拍图记录（板书 / 幻灯 / 指南页，可 AI 整理）</button>
+  <button class="btn ghost block" id="nt-export" style="margin-top:6px">📤 导出心得与指导意见（Word）</button>`;
+  const filtered = state.notes.filter(n=>!state.noteFilter || (n.type||'note')===state.noteFilter);
+  const fdepts = [...new Set(filtered.map(n=>n.dept||'未分科'))];
   if(!state.notes.length){
-    h += `<div class="empty"><div class="big">💡</div>各科室的习惯、老师教的要点、自己的心得<br>随手一条，按科室归档，备份一起带走</div>`;
+    h += `<div class="empty"><div class="big">💡</div>各科室的习惯、老师教的要点、查房的指导意见<br>随手一条，按类型和科室归档，备份一起带走</div>`;
+  } else if(!filtered.length){
+    h += `<div class="empty">这个类型下还没有记录</div>`;
   } else {
-    for(const d of depts){
-      const list = state.notes.filter(n=>(n.dept||'未分科')===d).sort((a,b)=>b.createdAt-a.createdAt);
+    for(const d of fdepts){
+      const list = filtered.filter(n=>(n.dept||'未分科')===d).sort((a,b)=>b.createdAt-a.createdAt);
       h += `<div class="todo-group"><div class="g-head">${esc(d)} · ${list.length}</div><div class="card" style="padding:2px 12px">`+
         list.map(n=>`<div class="todo" data-id="${n.id}">
-          <div class="txt"><div class="t1" style="white-space:pre-wrap">${esc(n.text)}</div><div class="t2">${esc(md(isoToDate(n.createdAt)))}</div></div>
+          <div class="txt"><div class="t1" style="white-space:pre-wrap">${n.type==='advice'?'<span style="background:#fbeeeb;color:var(--c-danger);font-size:11px;padding:1px 6px;border-radius:8px;margin-right:6px">指导意见</span>':''}${esc(n.text)}</div>${n.img?`<img src="${n.img}" style="max-height:72px;border-radius:8px;margin-top:6px;display:block">`:''}<div class="t2">${noteTypeLabel(n.type)} · ${esc(md(isoToDate(n.createdAt)))}</div></div>
           <button class="del" data-op="del">✕</button></div>`).join('')+
         `</div></div>`;
     }
@@ -510,16 +528,21 @@ function renderNotes(){
   const add = async ()=>{
     const txt = $('#nt-txt').value.trim(); if(!txt) return toast('先写内容');
     const dept = $('#nt-dept').value.trim();
-    const n = { id:uid(), dept, text:txt, createdAt:Date.now() };
+    const n = { id:uid(), dept, type:$('#nt-type').value, text:txt, createdAt:Date.now() };
     await txPut('notes', n); state.notes.push(n); state.lastDept = dept;
-    await markChange(); renderNotes(); toast('已记下');
+    await markChange(); renderNotes(); toast('已记下（'+noteTypeLabel(n.type)+'）');
   };
   $('#nt-add').onclick = add;
   $('#nt-txt').onkeydown = e=>{ if(e.key==='Enter') add(); };
+  const np = $('#nt-photo'); if(np) np.onclick = noteImageSheet;
+  const ne = $('#nt-export'); if(ne) ne.onclick = exportNotesSheet;
+  el.querySelectorAll('[data-ntf]').forEach(b=>{
+    b.onclick = ()=>{ state.noteFilter = b.dataset.ntf; renderNotes(); };
+  });
   el.querySelectorAll('.todo .del').forEach(b=>{
     b.onclick = async ()=>{
       const id = b.closest('.todo').dataset.id;
-      if(!await confirmBox('删除这条速记？')) return;
+      if(!await confirmBox('删除这条记录？')) return;
       await txDel('notes', id); state.notes = state.notes.filter(n=>n.id!==id);
       await markChange(); renderNotes();
     };
@@ -587,7 +610,8 @@ function renderMore(){
   </div>
   ${chg ? `<div class="card tip" style="border:1px solid #f0d9b5;background:#fdf8ef">⚠️ 距上次备份已有 <b>${chg}</b> 条改动。建议现在导出一次备份到 iCloud「文件」。</div>` : ''}
   <div class="card menu">
-    <button class="mi" id="mi-export"><span>📤 导出备份</span><span class="r">存到 iCloud「文件」</span></button>
+    <button class="mi" id="mi-export"><span>📤 导出备份</span><span class="r">存「文件」/ OneDrive</span></button>
+    ${('showDirectoryPicker' in window)?`<button class="mi" id="mi-od"><span>☁️ 一键备份到 OneDrive</span><span class="r">${state.meta.odHandle?'已连接目录':'选择目录'}</span></button>`:''}
     <button class="mi" id="mi-data"><span>📊 导出数据查看版</span><span class="r">Excel / Word</span></button>
     <button class="mi" id="mi-import"><span>📥 导入备份</span><span class="r">覆盖恢复</span></button>
     <button class="mi" id="mi-restore"><span>♻️ 恢复手机内自动备份</span><span class="r">${m.autoBackupAt?('备于 '+md(isoToDate(m.autoBackupAt))):'暂无'}</span></button>
@@ -606,6 +630,7 @@ function renderMore(){
   </div>
   <div style="text-align:center;color:#aab6b1;font-size:12px;padding:6px 0 14px">海马 Hippocampus v${APP_VER}</div>`;
   $('#mi-export').onclick = exportBackup;
+  const mod = $('#mi-od'); if(mod) mod.onclick = odBackup;
   $('#mi-data').onclick = exportSheet;
   $('#btn-dept').onclick = deptSheet;
   $('#mi-import').onclick = ()=> $('#file-in').click();
@@ -806,6 +831,39 @@ function dataStamp(){
   const d = new Date();
   return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
 }
+/* --- OneDrive 一键备份（电脑端 Chrome/Edge）：目录授权一次，之后一键写入网盘文件夹 --- */
+async function odBackup(){
+  let dir = state.meta.odHandle || null;
+  if(dir){
+    try{
+      const perm = await dir.requestPermission({mode:'readwrite'});
+      if(perm !== 'granted') dir = null;
+    }catch(e){ dir = null; }
+  }
+  if(!dir){
+    try{
+      dir = await showDirectoryPicker({ mode:'readwrite' });
+    }catch(e){
+      if(e && e.name==='AbortError') return;   // 用户取消选择
+      return toast('此环境不支持目录选择：'+(e&&e.message||e));
+    }
+  }
+  try{
+    const data = buildBackup();
+    const name = '海马备份-'+dataStamp()+'.json';
+    const fh = await dir.getFileHandle(name, {create:true});
+    const w = await fh.createWritable();
+    await w.write(JSON.stringify(data, null, 2));
+    await w.close();
+    state.meta.odHandle = dir;
+    state.meta.changes = 0; state.meta.lastBackup = Date.now();
+    await metaPut(state.meta);
+    renderMore();
+    toast('已备份到网盘目录（'+name+'）');
+  }catch(err){
+    toast('备份失败：'+(err&&err.message||err));
+  }
+}
 function sortedPts(){
   return state.patients.slice().sort((a,b)=>
     ((parseFloat(a.bed)>=0?parseFloat(a.bed):1e9)-(parseFloat(b.bed)>=0?parseFloat(b.bed):1e9)) ||
@@ -869,9 +927,9 @@ function buildExcelXml(){
     state.exams.slice().sort((a,b)=> String(b.date||'').localeCompare(String(a.date||'')))
       .map(x=>[nameOf(x.patientId), String(x.date||''), String(x.title||''), String(x.findings||''), x.important?'★重要':'']));
   const shNotes = xlsTable(
-    ['科室','内容','时间'],
+    ['类型','科室','含图','内容','时间'],
     state.notes.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
-      .map(n=>[String(n.dept||''), String(n.text||''), ts(n.createdAt)]));
+      .map(n=>[noteTypeLabel(n.type), String(n.dept||''), n.img?'有图':'', String(n.text||''), ts(n.createdAt)]));
   return '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'
     +'<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
     +'<Styles><Style ss:ID="h"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0A6E5C" ss:Pattern="Solid"/></Style></Styles>'
@@ -887,6 +945,14 @@ function exportExcel(){
 }
 /* --- Word：HTML 兼容格式 .doc，Word/WPS 直接打开，A4 可打印 --- */
 function wesc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* Word 文档公共头（样式全平台通用）：全量导出与临床记录导出共用 */
+const WORD_HEAD = `<head><meta charset="utf-8"><title>海马数据导出</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>@page{size:A4;margin:2cm} body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:12pt;color:#111}
+h1{font-size:18pt;color:#0a6e5c} h2{font-size:14pt;color:#0a6e5c;border-bottom:2px solid #0a6e5c;padding-bottom:4px} h3{font-size:12pt;margin:10pt 0 4pt}
+table{border-collapse:collapse;width:100%;margin:4pt 0} th,td{border:1px solid #999;padding:4pt 6pt;font-size:10.5pt;text-align:left;vertical-align:top}
+th{background:#e8f2ef;font-weight:bold} .imp{color:#c0392b;font-weight:bold} .sub{color:#666;font-size:9pt;font-weight:normal}
+ul{margin:2pt 0;padding-left:18pt} p{margin:4pt 0} img{max-width:70%}</style></head>`;
 function buildWordHtml(){
   const fd = s => { if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(String(s))) return String(s||''); const [y,m,d]=String(s).split('-'); return y+'年'+parseInt(m)+'月'+parseInt(d)+'日'; };
   const fts = t => t? new Date(t).toLocaleString('zh-CN',{hour12:false}) : '';
@@ -908,16 +974,10 @@ function buildWordHtml(){
       ${done.length?`<p class="sub">已完成 ${done.length} 条。</p>`:''}`:''}`;
   }).join('<br clear="all" style="page-break-before:always">');
   const notes = state.notes.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  const noteSec = notes.length? `<br clear="all" style="page-break-before:always"><h1>速记（科室心得）</h1>` + notes.map(n=>
-    `<p><b>${wesc(n.dept||'未分科')}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}</p>`).join('') : '';
+  const noteSec = notes.length? `<br clear="all" style="page-break-before:always"><h1>速记 · 心得与指导意见</h1>` + notes.map(n=>
+    `<p><b>${wesc(noteTypeLabel(n.type))} · ${wesc(n.dept||'未分科')}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${n.img?`<br><img src="${n.img}" style="max-width:70%">`:''}</p>`).join('') : '';
   return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><title>海马数据导出</title>
-<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
-<style>@page{size:A4;margin:2cm} body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:12pt;color:#111}
-h1{font-size:18pt;color:#0a6e5c} h2{font-size:14pt;color:#0a6e5c;border-bottom:2px solid #0a6e5c;padding-bottom:4px} h3{font-size:12pt;margin:10pt 0 4pt}
-table{border-collapse:collapse;width:100%;margin:4pt 0} th,td{border:1px solid #999;padding:4pt 6pt;font-size:10.5pt;text-align:left;vertical-align:top}
-th{background:#e8f2ef;font-weight:bold} .imp{color:#c0392b;font-weight:bold} .sub{color:#666;font-size:9pt;font-weight:normal}
-ul{margin:2pt 0;padding-left:18pt} p{margin:4pt 0}</style></head>
+${WORD_HEAD}
 <body><h1>海马 Hippocampus · 管床数据</h1><p class="sub">导出时间：${fts(Date.now())} · 患者 ${pts.length} 人（在院 ${pts.filter(p=>p.status==='在院').length}）· 本文件含真实诊疗信息，注意保管</p>${body}${noteSec}</body></html>`;
 }
 function exportWord(){
@@ -953,7 +1013,7 @@ function renderPBody(){
       <div class="quick" style="margin-top:10px">
         <input id="pv-txt" placeholder="给本床加待办，回车即存">
         <button class="btn" id="pv-add">添加</button></div>
-      <button class="btn ghost block" id="pv-voice" style="margin-top:8px">🎙️ 语音记录（拆待办 / 整理病史）</button>
+      <button class="btn block" id="pv-ai" style="margin-top:8px">🤖 AI 助手（语音 / 整理病史 / 拍单）</button>
       <div class="sect"><span>管理</span></div>
       <div class="card" style="padding:6px">
         <button class="btn danger block" id="pv-out" style="background:#fbeeeb;color:var(--c-danger);margin:6px 0">${p.status==='在院'?'出院 / 转科归档':'恢复为在院'}</button>
@@ -964,7 +1024,7 @@ function renderPBody(){
       await addTodo(p.id, v); $('#pv-txt').value=''; renderPBody(); renderAll(); };
     $('#pv-add').onclick = doAdd;
     $('#pv-txt').onkeydown = e=>{ if(e.key==='Enter') doAdd(); };
-    $('#pv-voice').onclick = voiceSheet;
+    $('#pv-ai').onclick = ()=> aiHubSheet(p);
     $('#pv-out').onclick = async ()=>{
       if(p.status==='在院'){
         if(!await confirmBox(`${ptName(p)} 出院 / 转科归档？\n归档后从病区列表移入「已出院」，可恢复。`)) return;
@@ -976,7 +1036,7 @@ function renderPBody(){
   else if(state.pTab==='hx'){
     const rows = [['主诉','chief'],['现病史','present'],['既往史','past'],['查体要点','exam']];
     el.innerHTML = `
-      <div class="sect"><span>病史</span><span><span class="link" id="hx-ai">🤖 AI 整理</span> · <span class="link" id="hx-edit">编辑</span></span></div>
+      <div class="sect"><span>病史</span><span class="link" id="hx-edit">编辑</span></div>
       ${rows.map(([k,f])=>`<div class="card"><div class="kv"><div class="k">${k}</div><div class="v">${p.history&&p.history[f]?esc(p.history[f]):'<span style="color:var(--c-sub)">（未填）</span>'}</div></div></div>`).join('')}`;
     $('#hx-edit').onclick = ()=>{
       const hh = p.history||{};
@@ -994,12 +1054,11 @@ function renderPBody(){
           await txPut('patients',p); await markChange(); renderPBody(); toast('病史已保存'); return true;
         }});
     };
-    $('#hx-ai').onclick = ()=> hxAISheet(p);
   }
   else {
     const list = examsOf(p.id);
     el.innerHTML = `
-      <div class="sect"><span>检验检查（新 → 旧，共 ${list.length} 条）</span><span class="link" id="exam-ai">📷 拍单识别</span></div>
+      <div class="sect"><span>检验检查（新 → 旧，共 ${list.length} 条）</span></div>
       ${list.length?list.map(x=>`
         <div class="card exam-item ${x.important?'imp':''}">
           <div class="h"><span class="d">${esc(md(x.date))}</span><span class="t">${esc(x.title)}</span></div>
@@ -1012,7 +1071,6 @@ function renderPBody(){
         </div>`).join(''):`<div class="empty"><div class="big">🧪</div>结果回报后点右下角 ＋ 记一条</div>`}
       <button class="fab" id="exam-add">＋</button>`;
     $('#exam-add').onclick = ()=> examSheet(p.id);
-    $('#exam-ai').onclick = ()=> examAISheet(p);
     const items = el.querySelectorAll('.exam-item');
     list.forEach((x,i)=>{
       const item = items[i];
@@ -1052,6 +1110,119 @@ function examSheet(pid, exist, opts){
       }
       await markChange(); renderPBody(); renderWard(); renderAll();
       toast(opts.fromTodo?'已建档，待办已勾掉':'已记录'); return true;
+    }});
+}
+
+/* --- 图片临床记录：拍照/选图 → 可选 AI 整理 → 存为临床记录（图片随记录保存） --- */
+function noteImageSheet(){
+  let pickedBlob = null, pickedB64 = '';
+  const depts = [...new Set([...state.notes.map(n=>n.dept), ...state.patients.map(p=>p.dept)].filter(Boolean))];
+  sheet({ title:'📷 图片临床记录', okText:'保存记录', body:`<div class="form">
+      <div class="quick">
+        <button class="btn ghost" id="ni-cam" style="flex:1">📷 拍照</button>
+        <button class="btn ghost" id="ni-alb" style="flex:1">🖼️ 相册 / 文件</button>
+      </div>
+      <input type="file" id="ni-f1" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="ni-f2" accept="image/*" style="display:none">
+      <img id="ni-prev" style="display:none;width:100%;border-radius:10px;margin-top:10px">
+      <button class="btn block" id="ni-run" style="display:none;margin-top:10px">🤖 AI 整理图片内容</button>
+      <label style="margin-top:10px">记录内容（AI 整理结果或自己写的，可改）</label>
+      <textarea id="ni-text" style="min-height:80px" placeholder="拍照后点 AI 整理；也可以直接写"></textarea>
+      <div class="quick" style="margin-top:8px">
+        <select id="ni-type" style="flex:0 0 92px"><option value="note">心得</option><option value="advice">指导意见</option></select>
+        <input id="ni-dept" list="ni-depts" placeholder="科室" style="flex:1" value="${esc(curDept()||state.lastDept||'')}">
+        <datalist id="ni-depts">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+      </div>
+      <div id="ni-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div>
+      <div class="tip" style="margin-top:8px">图片压缩后随记录保存在本机、随备份带走；AI 整理用 Provider 里配置的视觉模型，失败也不影响直接保存。</div></div>`,
+    onOk: async el=>{
+      const text = el.querySelector('#ni-text').value.trim();
+      if(!text && !pickedB64){ el.querySelector('#ni-err').textContent = '内容和图片至少要有一个'; return false; }
+      const n = { id:uid(), dept: el.querySelector('#ni-dept').value.trim() || curDept() || '未分科',
+        type: el.querySelector('#ni-type').value, text, img: pickedB64 || null, createdAt: Date.now() };
+      await txPut('notes', n); state.notes.push(n); state.lastDept = n.dept;
+      await markChange(); renderNotes(); toast('图片记录已保存'); return true;
+    },
+    onMount: el=>{
+      const handle = async file=>{
+        if(!file) return;
+        pickedBlob = await compressImage(file, 1280, 0.75);
+        pickedB64 = await blobToDataURL(pickedBlob);
+        const prev = el.querySelector('#ni-prev');
+        prev.src = pickedB64; prev.style.display = 'block';
+        el.querySelector('#ni-run').style.display = 'block';
+        el.querySelector('#ni-err').textContent = '';
+      };
+      el.querySelector('#ni-cam').onclick = ()=> el.querySelector('#ni-f1').click();
+      el.querySelector('#ni-alb').onclick = ()=> el.querySelector('#ni-f2').click();
+      el.querySelector('#ni-f1').onchange = e=> handle(e.target.files[0]);
+      el.querySelector('#ni-f2').onchange = e=> handle(e.target.files[0]);
+      el.querySelector('#ni-run').onclick = async ()=>{
+        if(!pickedB64) return;
+        const run = el.querySelector('#ni-run');
+        run.textContent = 'AI 整理中…'; run.disabled = true;
+        try{
+          const out = await callChat([
+            {role:'system', content:'你是临床记录助手。看这张图片（可能是板书、幻灯、指南页、文献截图或报告单），提取与临床相关的文字要点，整理成一条简洁的中文记录，可分点。只输出整理后的文字本身，不要 JSON、不要评论。'},
+            {role:'user', content:[
+              {type:'image_url', image_url:{url:pickedB64}},
+              {type:'text', text:'提取并整理这张图片的临床要点。'}
+            ]}
+          ], aiModels().vision, 0.2);
+          el.querySelector('#ni-text').value = out.trim();
+          run.textContent = '🤖 重新整理'; run.disabled = false;
+        }catch(err){
+          el.querySelector('#ni-err').textContent = 'AI 整理失败：'+err.message+'（图片已选好，也可以直接手写保存）';
+          run.textContent = '🤖 AI 整理图片内容'; run.disabled = false;
+        }
+      };
+    }});
+}
+
+/* --- 临床记录（心得/指导意见）专项导出：按类型与科室范围生成 Word --- */
+function buildNotesWordDoc(typeF, deptF){
+  const fts = t => t ? new Date(t).toLocaleString('zh-CN',{hour12:false}) : '';
+  const list = state.notes
+    .filter(n=>!typeF || (n.type||'note')===typeF)
+    .filter(n=>!deptF || deptF==='__all' || (n.dept||'未分科')===deptF)
+    .sort((a,b)=>(a.dept||'未分科').localeCompare(b.dept||'未分科','zh') || (b.createdAt||0)-(a.createdAt||0));
+  const typeText = typeF ? noteTypeLabel(typeF) : '心得与指导意见';
+  const deptText = (!deptF || deptF==='__all') ? '全部科室' : deptF;
+  const groups = {};
+  list.forEach(n=>{ const d = n.dept||'未分科'; (groups[d]=groups[d]||[]).push(n); });
+  const body = Object.keys(groups).sort((a,b)=>a.localeCompare(b,'zh')).map(d=>
+    `<h2>${wesc(d)} · ${groups[d].length} 条</h2>` + groups[d].map(n=>
+      `<p><b>${wesc(noteTypeLabel(n.type))}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${n.img?`<br><img src="${n.img}">`:''}</p>`).join('')).join('');
+  return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+${WORD_HEAD}
+<body><h1>临床记录 · ${wesc(typeText)}</h1><p class="sub">范围：${wesc(deptText)} · 共 ${list.length} 条 · 导出时间：${fts(Date.now())} · 含真实临床信息，注意保管</p>${body}</body></html>`;
+}
+function exportNotesSheet(){
+  if(!state.notes.length) return toast('还没有临床记录');
+  const depts = [...new Set(state.notes.map(n=>n.dept||'未分科'))];
+  sheet({ title:'📤 导出心得与指导意见', okText:'生成 Word',
+    body:`<div class="form">
+      <label>类型</label>
+      <select id="exn-type">
+        <option value="" ${state.noteFilter===''?'selected':''}>全部（心得+指导意见）</option>
+        <option value="note" ${state.noteFilter==='note'?'selected':''}>心得</option>
+        <option value="advice" ${state.noteFilter==='advice'?'selected':''}>指导意见</option>
+      </select>
+      <label>科室范围</label>
+      <select id="exn-dept">
+        <option value="__all">全部科室</option>
+        ${depts.map(d=>`<option value="${esc(d)}" ${d===(curDept()||state.lastDept)?'selected':''}>${esc(d)}</option>`).join('')}
+      </select>
+      <div class="tip" style="margin-top:8px">生成后和备份一样经分享面板：存「文件」（→OneDrive/iCloud）或直接发微信。图片会嵌入文档。</div>
+      <div id="exn-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
+    onOk: async el=>{
+      const tf = el.querySelector('#exn-type').value;
+      const df = el.querySelector('#exn-dept').value;
+      const count = state.notes.filter(n=>(!tf||(n.type||'note')===tf)&&(!df||df==='__all'||(n.dept||'未分科')===df)).length;
+      if(!count){ el.querySelector('#exn-err').textContent = '这个范围下没有记录'; return false; }
+      const html = buildNotesWordDoc(tf, df);
+      await shareFile(new Blob([html], {type:'application/msword'}), '临床记录-'+(tf?noteTypeLabel(tf):'全部')+'-'+dataStamp()+'.doc', 'Word 已生成');
+      return true;
     }});
 }
 
@@ -1474,6 +1645,26 @@ function aiSheet(){
 }
 
 /* --- AI 整理病史 --- */
+/* --- AI 助手：患者详情页统一 AI 入口（归拢语音/病史/拍单三个散落按钮） --- */
+function aiHubSheet(p){
+  const hasKey = !!aiKeyFor();
+  const provName = (provById(state.meta.aiProv||'')||AI_PROVIDERS[3]).name;
+  sheet({ title:'🤖 AI 助手 · '+ptName(p), hideOk:true,
+    body:`<div class="form">
+      <button class="btn block" id="ah-voice">🎙️ 语音记录</button>
+      <div class="tip" style="margin:6px 0 0">现场录音 / 导入 iPhone 录音 / 键盘听写 → 拆解为待办 或 整理为病史</div>
+      <button class="btn ghost block" id="ah-hx" style="margin-top:10px">📝 整理病史（粘贴文字）</button>
+      <div class="tip" style="margin:6px 0 0">把病历/出院小结的病史段粘贴进来，AI 提取主诉/现病史/既往史/查体</div>
+      <button class="btn ghost block" id="ah-exam" style="margin-top:10px">📷 拍单识别</button>
+      <div class="tip" style="margin:6px 0 0">拍化验单/报告单 → 提取项目与关键结果 → 存入检验检查</div>
+      <div class="tip" style="margin-top:10px">${hasKey ? '当前：'+esc(provName)+' · '+esc(aiModels().chat)+'（指令与套路按 Provider 设置生效）' : '⚠️ 未配置 API Key——到「我的 → Provider」配置后即可使用'}</div>
+      <div id="ah-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
+    onMount: el=>{
+      el.querySelector('#ah-voice').onclick = ()=>{ closeSheet(); voiceSheet(); };
+      el.querySelector('#ah-hx').onclick = ()=>{ closeSheet(); hxAISheet(p); };
+      el.querySelector('#ah-exam').onclick = ()=>{ closeSheet(); examAISheet(p); };
+    }});
+}
 function hxAISheet(p){
   if(needKey()) return;
   sheet({ title:'🤖 AI 整理病史', okText:'发送到智谱云',
