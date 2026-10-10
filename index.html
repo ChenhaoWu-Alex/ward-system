@@ -288,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '2.9.0';
+const APP_VER = '2.11.0';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -328,7 +328,7 @@ async function metaGet(){ return (await txAll('meta')).find(x=>x.k==='main') || 
 const metaPut = m => txPut('meta', m);
 
 /* ================= 状态 ================= */
-const state = { patients:[], todos:[], exams:[], notes:[], plays:[], meta:{k:'main'}, tab:'ward', cur:null, pTab:'ov', showDone:false, showOut:false, lastDept:'', lastPlay:'', noteFilter:'' };
+const state = { patients:[], todos:[], exams:[], notes:[], plays:[], meta:{k:'main'}, tab:'ward', cur:null, pTab:'ov', showDone:false, showOut:false, lastDept:'', lastPlay:'', noteFilter:'', noteDeptFilter:'' };
 /* 速记类型：note=科室心得，advice=病历指导意见（上级查房意见等） */
 const NOTE_TYPES = { note:'心得', advice:'指导意见' };
 const noteTypeLabel = t => NOTE_TYPES[t] || '心得';
@@ -502,6 +502,7 @@ function renderNotes(){
       <option value="advice" ${state.noteFilter==='advice'?'selected':''}>指导意见</option>
     </select>
     <select id="nt-dept-sel" style="flex:0 0 108px">
+      <option value="" ${!state.noteDeptFilter?'selected':''}>全部科室</option>
       <option value="__new">➕ 新增科室…</option>
     </select>
     <input id="nt-txt" placeholder="一句心得、老师要点、查房指导意见…">
@@ -512,7 +513,8 @@ function renderNotes(){
   <button class="btn ghost block" id="nt-photo" style="margin-top:6px">📷 拍图记录（板书 / 幻灯 / 指南页，可 AI 整理）</button>
   <button class="btn ghost block" id="nt-import" style="margin-top:6px">📥 批量导入（粘贴文字 / md 文件）</button>
   <button class="btn ghost block" id="nt-export" style="margin-top:6px">📤 导出心得与指导意见（Word）</button>`;
-  const filtered = state.notes.filter(n=>!state.noteFilter || (n.type||'note')===state.noteFilter);
+  const filtered = state.notes.filter(n=>(!state.noteFilter || (n.type||'note')===state.noteFilter)
+    && (!state.noteDeptFilter || (n.dept||'未分科')===state.noteDeptFilter));
   const fdepts = [...new Set(filtered.map(n=>n.dept||'未分科'))];
   if(!state.notes.length){
     h += `<div class="empty"><div class="big">💡</div>各科室的习惯、老师教的要点、查房的指导意见<br>随手一条，按类型和科室归档，备份一起带走</div>`;
@@ -531,23 +533,33 @@ function renderNotes(){
     }
   }
   el.innerHTML = h;
-  // 科室下拉：全部历史科室 + 当前科室默认选中；「新增」选项展开输入行
+  // 科室下拉 = 筛选 + 新记录归科二合一：「全部科室」浏览全部；选具体科室只看该科；
+  // 默认跟随当前轮转科室（科室配套）；「新增」选项展开输入行（仅用于记录归科）
   const deptSel = $('#nt-dept-sel');
   const deptList = [...new Set([
     ...state.notes.map(n=>n.dept), ...state.patients.map(p=>p.dept),
     ...state.plays.map(p=>p.dept), state.lastDept, curDept()
   ].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
-  const cur = curDept() || state.lastDept || deptList[0];
-  deptSel.innerHTML = deptList.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('')
+  const hasUndef = state.notes.some(n=>!n.dept);
+  const curFilter = state.noteDeptFilter !== undefined ? state.noteDeptFilter : (curDept() || '');
+  deptSel.innerHTML = '<option value=""'+(!curFilter?' selected':'')+'>全部科室</option>'
+    + deptList.map(d=>`<option value="${esc(d)}" ${d===curFilter?'selected':''}>${esc(d)}</option>`).join('')
+    + (hasUndef?`<option value="未分科" ${curFilter==='未分科'?'selected':''}>未分科</option>`:'')
     + '<option value="__new">➕ 新增科室…</option>';
   const newBtn = el.querySelector('#nt-dept-new-row');
   const syncNewRow = ()=>{ newBtn.style.display = deptSel.value==='__new' ? 'block' : 'none'; };
-  if(!deptList.length){ newBtn.style.display='block'; }
-  deptSel.onchange = syncNewRow;
+  deptSel.onchange = ()=>{
+    if(deptSel.value==='__new'){ syncNewRow(); return; }
+    const draft = $('#nt-txt').value;
+    state.noteDeptFilter = deptSel.value;
+    renderNotes();
+    if(draft) $('#nt-txt').value = draft;
+  };
+  syncNewRow();
   const add = async ()=>{
     const txt = $('#nt-txt').value.trim(); if(!txt) return toast('先写内容');
     const dept = (deptSel.value==='__new' ? $('#nt-dept-new').value.trim() : deptSel.value);
-    if(!dept) return toast('选科室或填新科室名');
+    if(!dept) return toast('先在左侧选一个科室（或「全部科室」下不能记，选具体科室）');
     const type = typeSel.value;
     if(!type) return toast('先在左侧选「心得」或「指导意见」再记');
     const n = { id:uid(), dept, type, text:txt, createdAt:Date.now() };
@@ -625,7 +637,8 @@ function notesImportSheet(){
         <input id="imp-dept-new" placeholder="新科室名">
       </div>
       <label>内容（在别处写好的总结粘贴到这里；每条以【心得】或【指导意见】开头会自动拆分归类）</label>
-      <textarea id="imp-text" style="min-height:150px" placeholder="【指导意见】8床术后第3天钡餐需陪同，观察有无梗阻及胃漏&#10;【指导意见】3床加用丙戊酸钠，一周后复查血药浓度&#10;【心得】反流患者入院先做CT再做钡餐，钡餐仅周三周五上午可做"></textarea>
+      <textarea id="imp-text" style="min-height:150px" placeholder="粘贴你的原始总结（不必整理格式），然后点下方「🤖 AI 整理拆分」；或直接粘贴已按【心得】/【指导意见】标记好的内容"></textarea>
+      <button class="btn block" id="imp-ai" style="margin-top:8px">🤖 AI 整理拆分（自动分成几条心得/指导意见）</button>
       <button class="btn ghost block" id="imp-file" style="margin-top:8px">📄 从文件导入（Obsidian / 备忘录导出的 .md / .txt）</button>
       <input type="file" id="imp-file-in" accept=".md,.txt,.markdown,text/plain,text/markdown" style="display:none">
       <div id="imp-count" style="font-size:13px;color:var(--c-sub);margin-top:6px">将导入 0 条</div>
@@ -672,7 +685,84 @@ function notesImportSheet(){
           el.querySelector('#imp-err').textContent='';
         }catch(err){ el.querySelector('#imp-err').textContent = '读取文件失败：'+err.message; }
       };
+      el.querySelector('#imp-ai').onclick = async ()=>{
+        const raw = ta.value.trim();
+        if(!raw) return toast('先粘贴原始总结');
+        const btn = el.querySelector('#imp-ai');
+        btn.textContent = 'AI 整理中…'; btn.disabled = true;
+        try{
+          const out = await callChat([
+            {role:'system', content:'你是临床记录整理助手。把用户的原始总结拆分成多条独立的临床记录，只输出一个 JSON 数组，每项形如 {"type":"note"或"advice","text":"记录内容"}。type 判断：上级指示/需要执行的事项（含病历书写、医嘱、安排）=advice；经验/流程/知识点=note。text 用 Markdown：第一行 **结论/主题**，随后 - 要点列表；一条只讲一个主题；内容忠实原文，不要编造。'},
+            {role:'user', content: raw}
+          ], aiModels().chat, 0.2);
+          const items = extractJSON(out);
+          if(!Array.isArray(items) || !items.length) throw new Error('AI 没有拆出内容');
+          ta.value = items.map(it=>'【'+(it.type==='advice'?'指导意见':'心得')+'】'+String(it.text||'').trim()).join('\n\n');
+          upd();
+          btn.textContent = '🤖 重新整理'; btn.disabled = false;
+        }catch(err){
+          el.querySelector('#imp-err').textContent = 'AI 整理失败：'+err.message+'（也可以手动加【心得】/【指导意见】标记后直接导入）';
+          btn.textContent = '🤖 AI 整理拆分'; btn.disabled = false;
+        }
+      };
     }});
+}
+/* 共性待办模板：meta.commonTodos 存条目数组；可应用到全部在院患者，新建患者自动带入 */
+function commonTodosSheet(){
+  const list = state.meta.commonTodos || [];
+  sheet({ title:'📋 共性待办模板', okText:'保存模板', body:`<div class="form">
+      <div class="tip">每个患者都要做的常规事项（如 心电图、抽血、术前谈话）做成模板：新建患者自动带入，也可一键应用到当前全部在院患者。</div>
+      <div class="quick">
+        <input id="ct-txt" placeholder="添加一条共性待办，如 心电图">
+        <button class="btn" id="ct-add">加</button></div>
+      ${list.length?list.map((t,i)=>`<div class="todo" data-i="${i}">
+        <div class="txt"><div class="t1">${esc(t)}</div></div>
+        <button class="del" data-op="del">✕</button></div>`).join('')
+        :'<div class="empty" style="padding:12px">还没有模板条目</div>'}
+      <button class="btn block" id="ct-apply" style="margin-top:10px" ${list.length?'':'disabled'}>➕ 应用到全部在院患者（${activePts().length} 人）</button>
+      <div class="tip" style="margin-top:6px">应用时按文字去重：患者已有同文待办的不重复添加。</div>
+      <div id="ct-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
+    onOk: async el=>{ await metaPut(state.meta); renderMore(); return true; },
+    onMount: el=>{
+      const refresh = ()=>{ closeSheet(); commonTodosSheet(); };
+      el.querySelector('#ct-add').onclick = async ()=>{
+        const v = el.querySelector('#ct-txt').value.trim();
+        if(!v) return toast('先填内容');
+        state.meta.commonTodos = state.meta.commonTodos || [];
+        state.meta.commonTodos.push(v);
+        await metaPut(state.meta); refresh();
+      };
+      el.querySelectorAll('[data-op=del]').forEach(b=>{
+        b.onclick = async ()=>{
+          const i = +b.closest('.todo').dataset.i;
+          state.meta.commonTodos.splice(i,1);
+          await metaPut(state.meta); refresh();
+        };
+      });
+      el.querySelector('#ct-apply').onclick = async ()=>{
+        if(!list.length) return;
+        const pts = activePts();
+        if(!pts.length) return toast('病区没有在院患者');
+        if(!await confirmBox(`将为 ${pts.length} 位在院患者各添加 ${list.length} 条待办（已有同文待办的不重复加）。确定？`)) return;
+        let added = 0;
+        for(const p of pts){
+          const have = new Set(state.todos.filter(t=>t.patientId===p.id && !t.done).map(t=>t.text));
+          for(const txt of list){
+            if(have.has(txt)) continue;
+            await addTodo(p.id, txt); added++;
+          }
+        }
+        renderAll();
+        el.querySelector('#ct-err').style.color='var(--c-main)';
+        el.querySelector('#ct-err').textContent = '✅ 已添加 '+added+' 条待办';
+      };
+    }});
+}
+/* 新建患者时自动带入共性待办 */
+async function applyCommonTodos(pid){
+  const list = state.meta.commonTodos || [];
+  for(const txt of list) await addTodo(pid, txt);
+  return list.length;
 }
 /* 编辑临床记录（文本/类型/科室均可改） */
 function noteEditSheet(n){
@@ -718,10 +808,17 @@ function noteToTodoSheet(n){
   const pts = activePts();
   const bedMatch = (n.text.match(/[0-9]{1,3}床/)||[])[0];
   const matched = bedMatch ? state.patients.find(p=>String(p.bed||'').replace(/床$/,'')===bedMatch.replace('床','') && p.status==='在院') : null;
-  sheet({ title:'🩺 指导意见 → 待办', okText:'加入待办',
+  // 拆行：指导意见里的每一行/要点是候选待办项
+  const items = n.text.split('\n').map(l=>l.trim()).filter(Boolean)
+    .map(l=>l.replace(/^[-*·]\s*/,'').replace(/^\d+[.、]\s*/,'')).filter(Boolean);
+  const list = items.length ? items : [n.text.trim()];
+  sheet({ title:'🩺 指导意见 → 待办（勾选具体条目）', okText:'加入待办',
     body:`<div class="form">
-      <div class="card" style="font-size:13px;white-space:pre-wrap">${esc(n.text)}</div>
-      <label>归属患者${matched?('（按床号自动匹配：'+esc(ptName(matched))+'）'):''}</label>
+      <label>勾选要转成待办的条目（可多选）</label>
+      ${list.map((it,i)=>`<label style="display:flex;gap:8px;align-items:flex-start;padding:6px 2px;border-bottom:1px solid var(--c-line)">
+        <input type="checkbox" checked data-i="${i}" style="margin-top:3px">
+        <span style="font-size:13px">${esc(it)}</span></label>`).join('')}
+      <label style="margin-top:10px">归属患者${matched?('（按床号自动匹配：'+esc(ptName(matched))+'）'):''}</label>
       ${pts.length?`<select id="ntd-pt">${pts.map(p=>`<option value="${p.id}" ${matched&&p.id===matched.id?'selected':''}>${esc(ptName(p))}</option>`).join('')}</select>`:'<div class="empty">病区没有在院患者</div>'}
       <label>截止日期（可空）</label>
       <input type="date" id="ntd-due">
@@ -730,8 +827,10 @@ function noteToTodoSheet(n){
       const sel = el.querySelector('#ntd-pt');
       if(!sel || !sel.value){ toast('病区没有在院患者，无法归属'); return false; }
       const due = el.querySelector('#ntd-due').value;
-      await addTodo(sel.value, n.text, due);
-      renderAll(); toast('已加入待办'); return true;
+      const picks = [...el.querySelectorAll('input[data-i]:checked')].map(cb=>list[+cb.dataset.i]);
+      if(!picks.length){ el.querySelector('#ntd-err').textContent = '没有勾选任何条目'; return false; }
+      for(const it of picks) await addTodo(sel.value, it, due);
+      renderAll(); toast('已加入 '+picks.length+' 条待办'); return true;
     }});
 }
 function openNotesPage(){ renderNotes(); $('#notes-page').classList.add('on'); }
@@ -805,6 +904,7 @@ function renderMore(){
   <div class="card menu">
     <button class="mi" id="mi-ai"><span>🤖 Provider</span><span class="r ${aiKeyFor()?'':'warn'}">${aiKeyFor()?'已配置':'未配置'}</span></button>
     <button class="mi" id="mi-plays"><span>📐 科室套路（AI 参考）</span><span class="r">${state.plays.length} 条</span></button>
+    <button class="mi" id="mi-common"><span>📋 共性待办模板</span><span class="r">${(state.meta.commonTodos||[]).length} 条</span></button>
     <button class="mi" id="mi-pin"><span>🔒 PIN 锁</span><span class="r ${m.pinHash?'':'warn'}">${m.pinHash?'已开启':'未开启'}</span></button>
     <button class="mi" id="mi-out"><span>🏥 已出院 / 转科管理</span><span class="r">${outPts().length} 人</span></button>
   </div>
@@ -823,6 +923,7 @@ function renderMore(){
   $('#mi-restore').onclick = restoreAuto;
   $('#mi-ai').onclick = aiSheet;
   $('#mi-plays').onclick = playsSheet;
+  $('#mi-common').onclick = commonTodosSheet;
   $('#mi-pin').onclick = pinSheet;
   $('#mi-out').onclick = outSheet;
 }
@@ -949,6 +1050,7 @@ function deptSheet(){
       if(!v){ el.querySelector('#dp-err').textContent = '科室名不能为空'; return false; }
       state.meta.curDept = v;
       state.lastDept = v;
+      state.noteDeptFilter = v;   // 速记列表跟随切换（科室配套）
       await metaPut(state.meta);
       renderAll(); toast('已切换到 '+v); return true;
     },
@@ -1586,7 +1688,10 @@ function patientSheet(existId, noteOnly){
           surgery:el.querySelector('#f-op').value.trim(), status:'在院', dischargedAt:null, history:null,
           dept:curDept()||null, createdAt:Date.now() };
         await txPut('patients',np); state.patients.push(np); await markChange();
-        toast('已建档'); switchTab('ward');
+        const cn = await applyCommonTodos(np.id);
+        if(cn) await markChange();
+        toast('已建档'+(cn?('，带入 '+cn+' 条共性待办'):''));
+        switchTab('ward');
       }
       renderAll(); return true;
     },
