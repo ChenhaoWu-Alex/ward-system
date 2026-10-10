@@ -288,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '2.7.0';
+const APP_VER = '2.9.0';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -497,8 +497,9 @@ function renderNotes(){
   const depts = [...new Set(state.notes.map(n=>n.dept||'未分科'))];
   let h = `<div class="quick" style="margin-top:10px">
     <select id="nt-type" style="flex:0 0 88px">
-      <option value="note">心得</option>
-      <option value="advice">指导意见</option>
+      <option value="" ${state.noteFilter===''?'selected':''}>全部</option>
+      <option value="note" ${state.noteFilter==='note'?'selected':''}>心得</option>
+      <option value="advice" ${state.noteFilter==='advice'?'selected':''}>指导意见</option>
     </select>
     <select id="nt-dept-sel" style="flex:0 0 108px">
       <option value="__new">➕ 新增科室…</option>
@@ -508,10 +509,8 @@ function renderNotes(){
   <div id="nt-dept-new-row" style="display:none;margin-top:6px">
     <input id="nt-dept-new" placeholder="新科室名，保存后加入下拉">
   </div>
-  <div class="quick" style="margin-top:6px">
-    ${[['','全部'],['note','💡 心得'],['advice','🩺 指导意见']].map(([v,l])=>`<button class="btn sm ${state.noteFilter===v?'':'ghost'}" data-ntf="${v}" style="flex:1">${l}</button>`).join('')}
-  </div>
   <button class="btn ghost block" id="nt-photo" style="margin-top:6px">📷 拍图记录（板书 / 幻灯 / 指南页，可 AI 整理）</button>
+  <button class="btn ghost block" id="nt-import" style="margin-top:6px">📥 批量导入（粘贴文字 / md 文件）</button>
   <button class="btn ghost block" id="nt-export" style="margin-top:6px">📤 导出心得与指导意见（Word）</button>`;
   const filtered = state.notes.filter(n=>!state.noteFilter || (n.type||'note')===state.noteFilter);
   const fdepts = [...new Set(filtered.map(n=>n.dept||'未分科'))];
@@ -549,7 +548,9 @@ function renderNotes(){
     const txt = $('#nt-txt').value.trim(); if(!txt) return toast('先写内容');
     const dept = (deptSel.value==='__new' ? $('#nt-dept-new').value.trim() : deptSel.value);
     if(!dept) return toast('选科室或填新科室名');
-    const n = { id:uid(), dept, type:$('#nt-type').value, text:txt, createdAt:Date.now() };
+    const type = typeSel.value;
+    if(!type) return toast('先在左侧选「心得」或「指导意见」再记');
+    const n = { id:uid(), dept, type, text:txt, createdAt:Date.now() };
     await txPut('notes', n); state.notes.push(n); state.lastDept = dept;
     await markChange(); renderNotes(); toast('已记下（'+noteTypeLabel(n.type)+'）');
   };
@@ -557,9 +558,15 @@ function renderNotes(){
   $('#nt-txt').onkeydown = e=>{ if(e.key==='Enter') add(); };
   const np = $('#nt-photo'); if(np) np.onclick = noteImageSheet;
   const ne = $('#nt-export'); if(ne) ne.onclick = exportNotesSheet;
-  el.querySelectorAll('[data-ntf]').forEach(b=>{
-    b.onclick = ()=>{ state.noteFilter = b.dataset.ntf; renderNotes(); };
-  });
+  const ni = $('#nt-import'); if(ni) ni.onclick = notesImportSheet;
+  // 类型下拉 = 筛选 + 新记录类型二合一；切换时保留草稿
+  const typeSel = $('#nt-type');
+  typeSel.onchange = ()=>{
+    const draft = $('#nt-txt').value;
+    state.noteFilter = typeSel.value;
+    renderNotes();
+    if(draft) $('#nt-txt').value = draft;
+  };
   el.querySelectorAll('[data-op=edit]').forEach(b=>{
     b.onclick = ()=>{
       const n = state.notes.find(x=>x.id===b.closest('.todo').dataset.id);
@@ -580,6 +587,92 @@ function renderNotes(){
       await markChange(); renderNotes();
     };
   });
+}
+/* 批量导入：解析文本为多条临床记录。约定：每条以【心得】或【指导意见】开头（可跨行），
+ * 无标记时整段按所选默认类型成为一条。 */
+function parseNotesImport(text, defType){
+  const lines = String(text||'').replace(/\r/g,'').split('\n');
+  const out = [];
+  let cur = null;
+  for(const ln of lines){
+    const m = ln.match(/^\s*[【\[]\s*(指导意见|心得)\s*[】\]]\s*(.*)$/);
+    if(m){
+      if(cur && cur.text.trim()) out.push(cur);
+      cur = { type: m[1]==='指导意见' ? 'advice' : 'note', text: m[2] };
+    } else {
+      if(!cur) cur = { type: defType, text: ln };
+      else cur.text += '\n' + ln;
+    }
+  }
+  if(cur && cur.text.trim()) out.push(cur);
+  return out.map(x=>({ type:x.type, text:x.text.trim() })).filter(x=>x.text);
+}
+function notesImportSheet(){
+  const depts = [...new Set([
+    ...state.notes.map(x=>x.dept), ...state.patients.map(x=>x.dept),
+    ...state.plays.map(x=>x.dept), state.lastDept, curDept()
+  ].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+  const cur = curDept() || state.lastDept || depts[0] || '';
+  sheet({ title:'📥 批量导入（心得 / 指导意见）', okText:'导入', body:`<div class="form">
+      <div class="quick">
+        <select id="imp-type" style="flex:0 0 88px">
+          <option value="note">默认：心得</option>
+          <option value="advice">默认：指导意见</option>
+        </select>
+        <select id="imp-dept" style="flex:0 0 108px"></select>
+      </div>
+      <div id="imp-dept-new-row" style="display:none;margin-top:6px">
+        <input id="imp-dept-new" placeholder="新科室名">
+      </div>
+      <label>内容（在别处写好的总结粘贴到这里；每条以【心得】或【指导意见】开头会自动拆分归类）</label>
+      <textarea id="imp-text" style="min-height:150px" placeholder="【指导意见】8床术后第3天钡餐需陪同，观察有无梗阻及胃漏&#10;【指导意见】3床加用丙戊酸钠，一周后复查血药浓度&#10;【心得】反流患者入院先做CT再做钡餐，钡餐仅周三周五上午可做"></textarea>
+      <button class="btn ghost block" id="imp-file" style="margin-top:8px">📄 从文件导入（Obsidian / 备忘录导出的 .md / .txt）</button>
+      <input type="file" id="imp-file-in" accept=".md,.txt,.markdown,text/plain,text/markdown" style="display:none">
+      <div id="imp-count" style="font-size:13px;color:var(--c-sub);margin-top:6px">将导入 0 条</div>
+      <div id="imp-err" style="color:var(--c-danger);font-size:13px;margin-top:6px;white-space:pre-wrap"></div>
+      <div class="tip" style="margin-top:6px">支持 Markdown（列表/加粗会照常显示）。导入不会去重，同一批别导两遍。每天在 Obsidian/备忘录写好总结 → 复制粘贴或选文件 → 一键入库。</div></div>`,
+    onOk: async el=>{
+      const dsel = el.querySelector('#imp-dept');
+      const dept = (dsel.value==='__new' ? el.querySelector('#imp-dept-new').value.trim() : dsel.value);
+      if(!dept){ el.querySelector('#imp-err').textContent = '先选科室或填新科室名'; return false; }
+      const items = parseNotesImport(el.querySelector('#imp-text').value, el.querySelector('#imp-type').value);
+      if(!items.length){ el.querySelector('#imp-err').textContent = '没有可导入的内容'; return false; }
+      for(const it of items){
+        const n = { id:uid(), dept, type:it.type, text:it.text, createdAt:Date.now() };
+        await txPut('notes', n); state.notes.push(n);
+      }
+      state.lastDept = dept;
+      await markChange(); renderNotes();
+      toast('已导入 '+items.length+' 条'); return true;
+    },
+    onMount: el=>{
+      const dsel = el.querySelector('#imp-dept');
+      dsel.innerHTML = depts.map(d=>`<option value="${esc(d)}" ${d===cur?'selected':''}>${esc(d)}</option>`).join('')
+        + '<option value="__new">➕ 新增科室…</option>'
+        + (depts.length?'':'');
+      const drow = el.querySelector('#imp-dept-new-row');
+      const dsync = ()=>{ drow.style.display = dsel.value==='__new' ? 'block' : 'none'; };
+      if(!depts.length){ dsel.value='__new'; }
+      dsel.onchange = dsync; dsync();
+      const ta = el.querySelector('#imp-text');
+      const cnt = el.querySelector('#imp-count');
+      const upd = ()=>{
+        const n = parseNotesImport(ta.value, el.querySelector('#imp-type').value).length;
+        cnt.textContent = '将导入 '+n+' 条';
+      };
+      ta.oninput = upd;
+      el.querySelector('#imp-type').onchange = upd;
+      el.querySelector('#imp-file').onclick = ()=> el.querySelector('#imp-file-in').click();
+      el.querySelector('#imp-file-in').onchange = async e=>{
+        const f = e.target.files[0]; e.target.value='';
+        if(!f) return;
+        try{
+          ta.value = await f.text();
+          upd();
+          el.querySelector('#imp-err').textContent='';
+        }catch(err){ el.querySelector('#imp-err').textContent = '读取文件失败：'+err.message; }
+      };
+    }});
 }
 /* 编辑临床记录（文本/类型/科室均可改） */
 function noteEditSheet(n){
@@ -840,7 +933,16 @@ function deptSheet(){
         <label>新科室名</label>
         <input id="dp-new" placeholder="输入新科室名，如 普外科">
       </div>
-      <div id="dp-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
+      <div id="dp-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div>
+      <div class="sect" style="margin-top:12px"><span>科室管理（改名 / 删除）</span></div>
+      <div class="card" style="padding:4px 10px">
+        ${depts.map(d=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--c-line)">
+          <span style="flex:1;font-size:13px">${esc(d)}${d===curDept()?' <span style="color:var(--c-sub);font-size:11px">（当前）</span>':''}</span>
+          <button class="btn sm ghost" data-dm="ren" data-d="${esc(d)}">改名</button>
+          <button class="btn sm danger" data-dm="del" data-d="${esc(d)}">删除</button>
+        </div>`).join('') || '<div class="empty" style="padding:10px">还没有科室</div>'}
+      </div>
+      <div class="tip" style="margin-top:6px">改名会同步该科室下所有患者、速记与套路；删除后这些记录归入「未分科」（患者变为不限定科室，所有科室可见）。</div></div>`,
     onOk: async el=>{
       const sel = el.querySelector('#dp-sel').value;
       const v = (sel==='__new' ? el.querySelector('#dp-new').value.trim() : sel);
@@ -854,7 +956,53 @@ function deptSheet(){
       el.querySelector('#dp-sel').onchange = ()=>{
         el.querySelector('#dp-new-row').style.display = el.querySelector('#dp-sel').value==='__new' ? 'block' : 'none';
       };
+      el.querySelectorAll('[data-dm]').forEach(b=>{
+        b.onclick = async ()=>{
+          const d = b.dataset.d;
+          if(b.dataset.dm==='ren'){
+            closeSheet();
+            sheet({ title:'✎ 科室改名 · '+d, okText:'保存',
+              body:`<div class="form">
+                <label>新科室名</label><input id="dn-new" value="${esc(d)}">
+                <div class="tip">该科室下的患者、速记、套路会全部同步为新名字。</div></div>`,
+              onOk: async el2=>{
+                const v = el2.querySelector('#dn-new').value.trim();
+                if(!v || v===d){ toast('名字未变化'); return false; }
+                await renameDept(d, v);
+                toast('已改名为 '+v); deptSheet(); return true;
+              }});
+          } else {
+            const cnt = deptRecordCount(d);
+            if(!await confirmBox(`删除科室「${d}」？\n该科室下：患者 ${cnt.p}、速记 ${cnt.n}、套路 ${cnt.y}。\n删除后这些记录归入「未分科」（患者不限定科室）。`)) return;
+            await deleteDept(d);
+            toast('已删除科室 '+d); deptSheet();
+          }
+        };
+      });
     }});
+}
+/* 科室改名：同步患者/速记/套路/当前科室 */
+async function renameDept(oldD, newD){
+  for(const p of state.patients) if(p.dept===oldD){ p.dept=newD; await txPut('patients',p); }
+  for(const n of state.notes) if(n.dept===oldD){ n.dept=newD; await txPut('notes',n); }
+  for(const y of state.plays) if(y.dept===oldD){ y.dept=newD; await txPut('plays',y); }
+  if(state.meta.curDept===oldD) state.meta.curDept=newD;
+  if(state.lastDept===oldD) state.lastDept=newD;
+  await metaPut(state.meta); renderAll();
+}
+/* 科室删除：记录归「未分科」（患者 dept 置空=不限科室） */
+async function deleteDept(d){
+  for(const p of state.patients) if(p.dept===d){ p.dept=null; await txPut('patients',p); }
+  for(const n of state.notes) if(n.dept===d){ n.dept=''; await txPut('notes',n); }
+  for(const y of state.plays) if(y.dept===d){ y.dept=''; await txPut('plays',y); }
+  if(state.meta.curDept===d) state.meta.curDept='';
+  if(state.lastDept===d) state.lastDept='';
+  await metaPut(state.meta); renderAll();
+}
+function deptRecordCount(d){
+  return { p: state.patients.filter(x=>x.dept===d).length,
+           n: state.notes.filter(x=>x.dept===d).length,
+           y: state.plays.filter(x=>x.dept===d).length };
 }
 
 /* ================= 备份 ================= */

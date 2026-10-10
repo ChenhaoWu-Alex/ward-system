@@ -1,6 +1,6 @@
 /* 管床系统 Service Worker：全量缓存壳，装到主屏幕后完全离线可用。
  * 改动系统后把 CACHE 升一个版本号，用户下次打开即自动换新。 */
-const CACHE = 'ward-v29';
+const CACHE = 'ward-v31';
 const SHELL = [
   './',
   './index.html',
