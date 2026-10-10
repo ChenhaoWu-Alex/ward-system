@@ -288,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '2.3.0';
+const APP_VER = '2.4.0';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -982,7 +982,7 @@ function buildWordHtml(){
     ${p.note?`<tr><th>备注</th><td colspan="3">${wesc(p.note).replace(/\n/g,'<br>')}</td></tr>`:''}</table>
     ${(h.chief||h.present||h.past||h.exam)?`<h3>病史</h3><table>${hxRow('主诉',h.chief)}${hxRow('现病史',h.present)}${hxRow('既往史',h.past)}${hxRow('查体要点',h.exam)}</table>`:''}
     ${exams.length?`<h3>检验检查（新→旧）</h3><table><tr><th style="width:7em">日期</th><th style="width:9em">项目</th><th>关键结果与判读</th></tr>
-      ${exams.map(x=>`<tr><td>${fd(x.date)}</td><td>${wesc(x.title)}${x.important?' <span class="imp">★</span>':''}</td><td>${wesc(x.findings).replace(/\n/g,'<br>')}</td></tr>`).join('')}</table>`:''}
+      ${exams.map(x=>`<tr><td>${(()=>{const tl=[];if(x.source==='外院')tl.push('外院');if(x.orderDate)tl.push('医嘱 '+fd(x.orderDate));tl.push(fd(x.date));if(x.reportDate)tl.push('报告 '+fd(x.reportDate));return tl.join('<br>')})()}</td><td>${wesc(x.title)}${x.important?' <span class="imp">★</span>':''}</td><td>${wesc(x.findings).replace(/\n/g,'<br>')}</td></tr>`).join('')}</table>`:''}
     ${todos.length?`<h3>待办</h3>${open.length?`<p>${open.length} 条未办：</p><ul>${open.map(t=>`<li>${wesc(t.text)}${t.due?` <span class="imp">（${fd(t.due)}前）</span>`:''}</li>`).join('')}</ul>`:''}
       ${done.length?`<p class="sub">已完成 ${done.length} 条。</p>`:''}`:''}`;
   }).join('<br clear="all" style="page-break-before:always">');
@@ -1024,7 +1024,7 @@ function renderPBody(){
       <div class="sect"><span>本床待办（${list.length}）</span></div>
       <div class="card" style="padding:2px 12px">${list.length?list.map(t=>todoRow(t,false)).join(''):'<div class="empty" style="padding:18px">没有未办事项</div>'}</div>
       <div class="quick" style="margin-top:10px">
-        <input id="pv-txt" placeholder="给本床加待办，回车即存">
+        <input id="pv-txt" placeholder="给 ${esc(ptName(p))} 加待办，回车即存">
         <button class="btn" id="pv-add">添加</button></div>
       <button class="btn block" id="pv-ai" style="margin-top:8px">🤖 AI 助手（语音 / 整理病史 / 拍单）</button>
       <div class="sect"><span>管理</span></div>
@@ -1034,7 +1034,7 @@ function renderPBody(){
     bindTodoOps(el);
     $('#pv-note').onclick = patientSheet.bind(null, p.id, true);
     const doAdd = async ()=>{ const v=$('#pv-txt').value.trim(); if(!v) return;
-      await addTodo(p.id, v); $('#pv-txt').value=''; renderPBody(); renderAll(); };
+      await addTodo(p.id, v); $('#pv-txt').value=''; renderPBody(); renderAll(); toast('已加给 '+ptName(p)); };
     $('#pv-add').onclick = doAdd;
     $('#pv-txt').onkeydown = e=>{ if(e.key==='Enter') doAdd(); };
     $('#pv-ai').onclick = ()=> aiHubSheet(p);
@@ -1053,7 +1053,7 @@ function renderPBody(){
       ${rows.map(([k,f])=>`<div class="card"><div class="kv"><div class="k">${k}</div><div class="v">${p.history&&p.history[f]?esc(p.history[f]):'<span style="color:var(--c-sub)">（未填）</span>'}</div></div></div>`).join('')}`;
     $('#hx-edit').onclick = ()=>{
       const hh = p.history||{};
-      sheet({ title:'编辑病史', okText:'保存',
+      sheet({ title:'编辑病史 · '+ptName(p), okText:'保存',
         body:`<div class="form">
           <label>主诉</label><textarea id="hx-chief">${esc(hh.chief||'')}</textarea>
           <label>现病史</label><textarea id="hx-present" style="min-height:110px">${esc(hh.present||'')}</textarea>
@@ -1064,7 +1064,7 @@ function renderPBody(){
             present:el.querySelector('#hx-present').value.trim(),
             past:el.querySelector('#hx-past').value.trim(),
             exam:el.querySelector('#hx-exam').value.trim() };
-          await txPut('patients',p); await markChange(); renderPBody(); toast('病史已保存'); return true;
+          await txPut('patients',p); await markChange(); renderPBody(); toast('病史已保存（'+ptName(p)+'）'); return true;
         }});
     };
   }
@@ -1072,16 +1072,23 @@ function renderPBody(){
     const list = examsOf(p.id);
     el.innerHTML = `
       <div class="sect"><span>检验检查（新 → 旧，共 ${list.length} 条）</span></div>
-      ${list.length?list.map(x=>`
+      ${list.length?list.map(x=>{
+        const tl = [];
+        if(x.source==='外院') tl.push('外院');
+        if(x.orderDate) tl.push('医嘱 '+md(x.orderDate));
+        tl.push('检查 '+md(x.date));
+        if(x.reportDate) tl.push('报告 '+md(x.reportDate)); else tl.push('未回报');
+        return `
         <div class="card exam-item ${x.important?'imp':''}">
-          <div class="h"><span class="d">${esc(md(x.date))}</span><span class="t">${esc(x.title)}</span></div>
+          <div class="h"><span class="d">${esc(md(x.date))}</span><span class="t">${esc(x.title)}${x.source==='外院'?' <span style="color:var(--c-sub);font-size:11px">（外院）</span>':''}</span></div>
+          <div style="font-size:11px;color:var(--c-sub);margin-top:2px">${tl.join(' · ')}</div>
           ${x.findings?`<div class="f">${esc(x.findings)}</div>`:''}
           <div class="ops">
             <button class="imp ${x.important?'on':''}" data-op="imp">${x.important?'★ 重要（点击取消）':'☆ 标为重要'}</button>
             <button data-op="edit">改</button>
             <button data-op="del">删</button>
           </div>
-        </div>`).join(''):`<div class="empty"><div class="big">🧪</div>结果回报后点右下角 ＋ 记一条</div>`}
+        </div>`;}).join(''):`<div class="empty"><div class="big">🧪</div>结果回报后点右下角 ＋ 记一条</div>`}
       <button class="fab" id="exam-add">＋</button>`;
     $('#exam-add').onclick = ()=> examSheet(p.id);
     const items = el.querySelectorAll('.exam-item');
@@ -1101,17 +1108,30 @@ function renderPBody(){
 function examSheet(pid, exist, opts){
   opts = opts||{};
   const p = ptById(pid);
-  sheet({ title: opts.fromTodo?'转档案 · 记录检验检查':(exist?'修改检查记录':'记录检验检查'), okText:'保存',
+  const src0 = exist ? (exist.source||'本院') : '本院';
+  sheet({ title: (opts.fromTodo?'转档案 · 记录检验检查':(exist?'修改检验检查':'记录检验检查')) + ' · ' + ptName(p), okText:'保存',
     body:`<div class="form">
-      <label>日期</label><input type="date" id="ex-date" value="${exist?esc(exist.date):today()}">
+      <div class="quick">
+        <label style="flex:0 0 auto;margin:0;color:var(--c-sub)">来源</label>
+        <select id="ex-src" style="flex:1">
+          <option value="本院" ${src0!=='外院'?'selected':''}>本院</option>
+          <option value="外院" ${src0==='外院'?'selected':''}>外院（检查在外院做的）</option>
+        </select>
+      </div>
+      <label>下医嘱日期（开单时间，可空）</label><input type="date" id="ex-order" value="${exist?esc(exist.orderDate||''):''}">
+      <label>检查 / 预约日期（主时间线；未约可先填预计日期）</label><input type="date" id="ex-date" value="${exist?esc(exist.date):today()}">
+      <label>报告日期（结果回报时间；留空＝未回报）</label><input type="date" id="ex-report" value="${exist?esc(exist.reportDate||''):''}">
       <label>项目（如：血常规 / 头颅 CT）</label><input id="ex-title" value="${exist?esc(exist.title):''}">
-      <label>关键结果与判读</label><textarea id="ex-find" style="min-height:100px" placeholder="只记要点：异常值、结论、下一步">${exist?esc(exist.findings):''}</textarea>
+      <label>关键结果与判读</label><textarea id="ex-find" style="min-height:100px" placeholder="只记要点：异常值、结论、下一步；外院检查记外院所见">${exist?esc(exist.findings):''}</textarea>
       <div class="chkline"><input type="checkbox" id="ex-imp" ${exist&&exist.important?'checked':''}><label for="ex-imp" style="margin:0;color:var(--c-danger)">标为重要（危急值、需交代事项）</label></div></div>`,
     onOk: async el=>{
       const title = el.querySelector('#ex-title').value.trim();
       if(!title){ toast('项目名不能为空'); return false; }
       const rec = exist || { id:uid(), patientId:pid, createdAt:Date.now() };
+      rec.source = el.querySelector('#ex-src').value || '本院';
+      rec.orderDate = el.querySelector('#ex-order').value || null;
       rec.date = el.querySelector('#ex-date').value || today();
+      rec.reportDate = el.querySelector('#ex-report').value || null;
       rec.title = title;
       rec.findings = el.querySelector('#ex-find').value.trim();
       rec.important = el.querySelector('#ex-imp').checked;
@@ -1122,7 +1142,7 @@ function examSheet(pid, exist, opts){
         if(t && !t.done){ t.done = true; t.doneAt = Date.now(); await txPut('todos', t); }
       }
       await markChange(); renderPBody(); renderWard(); renderAll();
-      toast(opts.fromTodo?'已建档，待办已勾掉':'已记录'); return true;
+      toast((opts.fromTodo?'已建档，待办已勾掉':'已记录')+'（'+ptName(p)+'）'); return true;
     }});
 }
 
@@ -1723,7 +1743,7 @@ function hxAISheet(p){
     }});
 }
 function hxResultSheet(p, j){
-  sheet({ title:'AI 整理结果（逐项核对，可直接改）', okText:'采用并继续编辑',
+  sheet({ title:'AI 整理结果 · '+ptName(p)+'（逐项核对，可直接改）', okText:'采用并继续编辑',
     body:`<div class="form">${[['主诉','chief'],['现病史','present'],['既往史','past'],['查体要点','exam']]
       .map(([k,f])=>`<label>${k}</label><textarea id="ai-${f}">${esc(j[f]||'')}</textarea>`).join('')}</div>`,
     onOk: async el2=>{
@@ -1755,7 +1775,7 @@ function hxAIApply(p, pre){
         present:el.querySelector('#hx-present').value.trim(),
         past:el.querySelector('#hx-past').value.trim(),
         exam:el.querySelector('#hx-exam').value.trim() };
-      await txPut('patients',p); await markChange(); renderPBody(); toast('病史已保存'); return true;
+      await txPut('patients',p); await markChange(); renderPBody(); toast('病史已保存（'+ptName(p)+'）'); return true;
     }});
 }
 
@@ -1806,7 +1826,9 @@ function examAISheet(p){
           closeSheet();
           examSheet(p.id, {
             id: uid(), patientId: p.id, createdAt: Date.now(),
+            source: '本院',
             date: /^\d{4}-\d{2}-\d{2}$/.test(j.date||'') ? j.date : today(),
+            reportDate: /^\d{4}-\d{2}-\d{2}$/.test(j.date||'') ? j.date : null,
             title: j.title || '拍照识别',
             findings: j.findings || '',
             important: !!j.important,
