@@ -288,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '2.2.0';
+const APP_VER = '2.3.0';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -332,6 +332,7 @@ const state = { patients:[], todos:[], exams:[], notes:[], plays:[], meta:{k:'ma
 /* 速记类型：note=科室心得，advice=病历指导意见（上级查房意见等） */
 const NOTE_TYPES = { note:'心得', advice:'指导意见' };
 const noteTypeLabel = t => NOTE_TYPES[t] || '心得';
+const noteImgs = n => n.imgs || (n.img ? [n.img] : []);   // 兼容旧单图字段
 
 function sortPt(a,b){ const A=(a.bed||'').trim(), B=(b.bed||'').trim();
   const na=parseFloat(A), nb=parseFloat(B);
@@ -519,7 +520,7 @@ function renderNotes(){
       const list = filtered.filter(n=>(n.dept||'未分科')===d).sort((a,b)=>b.createdAt-a.createdAt);
       h += `<div class="todo-group"><div class="g-head">${esc(d)} · ${list.length}</div><div class="card" style="padding:2px 12px">`+
         list.map(n=>`<div class="todo" data-id="${n.id}">
-          <div class="txt"><div class="t1" style="white-space:pre-wrap">${n.type==='advice'?'<span style="background:#fbeeeb;color:var(--c-danger);font-size:11px;padding:1px 6px;border-radius:8px;margin-right:6px">指导意见</span>':''}${esc(n.text)}</div>${n.img?`<img src="${n.img}" style="max-height:72px;border-radius:8px;margin-top:6px;display:block">`:''}<div class="t2">${noteTypeLabel(n.type)} · ${esc(md(isoToDate(n.createdAt)))}</div></div>
+          <div class="txt"><div class="t1" style="white-space:pre-wrap">${n.type==='advice'?'<span style="background:#fbeeeb;color:var(--c-danger);font-size:11px;padding:1px 6px;border-radius:8px;margin-right:6px">指导意见</span>':''}${esc(n.text)}</div>${noteImgs(n).length?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${noteImgs(n).map(b=>`<img src="${b}" style="height:64px;border-radius:8px">`).join('')}</div>`:''}<div class="t2">${noteTypeLabel(n.type)} · ${esc(md(isoToDate(n.createdAt)))}</div></div>
           <button class="del" data-op="del">✕</button></div>`).join('')+
         `</div></div>`;
     }
@@ -734,21 +735,33 @@ function deptSheet(){
   const depts = [...new Set([
     ...state.patients.map(p=>p.dept), ...state.notes.map(n=>n.dept),
     ...state.plays.map(p=>p.dept), state.lastDept, state.meta.curDept
-  ].filter(Boolean))];
+  ].filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
   sheet({ title:'🏥 当前科室（轮转切换）', okText:'切换到这里',
     body:`<div class="form">
       <div class="tip">你转到哪个科，就切到哪个科：病区、待办、统计只显示这个科的患者；新速记自动归到这个科；AI 套路也按科室管理。之前科室的数据全部保留，随时切回来看。</div>
-      <label>科室名</label>
-      <input id="dp-name" list="dp-list" value="${esc(curDept())}" placeholder="如 普外科 / 神经外科">
-      <datalist id="dp-list">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+      <label>选择科室（下拉选择，或选「新增」自己填）</label>
+      <select id="dp-sel">
+        ${depts.map(d=>`<option value="${esc(d)}" ${d===curDept()?'selected':''}>${esc(d)}</option>`).join('')}
+        <option value="__new">➕ 新增科室…</option>
+      </select>
+      <div id="dp-new-row" style="display:none">
+        <label>新科室名</label>
+        <input id="dp-new" placeholder="输入新科室名，如 普外科">
+      </div>
       <div id="dp-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
     onOk: async el=>{
-      const v = el.querySelector('#dp-name').value.trim();
+      const sel = el.querySelector('#dp-sel').value;
+      const v = (sel==='__new' ? el.querySelector('#dp-new').value.trim() : sel);
       if(!v){ el.querySelector('#dp-err').textContent = '科室名不能为空'; return false; }
       state.meta.curDept = v;
       state.lastDept = v;
       await metaPut(state.meta);
       renderAll(); toast('已切换到 '+v); return true;
+    },
+    onMount: el=>{
+      el.querySelector('#dp-sel').onchange = ()=>{
+        el.querySelector('#dp-new-row').style.display = el.querySelector('#dp-sel').value==='__new' ? 'block' : 'none';
+      };
     }});
 }
 
@@ -929,7 +942,7 @@ function buildExcelXml(){
   const shNotes = xlsTable(
     ['类型','科室','含图','内容','时间'],
     state.notes.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
-      .map(n=>[noteTypeLabel(n.type), String(n.dept||''), n.img?'有图':'', String(n.text||''), ts(n.createdAt)]));
+      .map(n=>[noteTypeLabel(n.type), String(n.dept||''), noteImgs(n).length?('有图×'+noteImgs(n).length):'', String(n.text||''), ts(n.createdAt)]));
   return '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'
     +'<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
     +'<Styles><Style ss:ID="h"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0A6E5C" ss:Pattern="Solid"/></Style></Styles>'
@@ -975,7 +988,7 @@ function buildWordHtml(){
   }).join('<br clear="all" style="page-break-before:always">');
   const notes = state.notes.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const noteSec = notes.length? `<br clear="all" style="page-break-before:always"><h1>速记 · 心得与指导意见</h1>` + notes.map(n=>
-    `<p><b>${wesc(noteTypeLabel(n.type))} · ${wesc(n.dept||'未分科')}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${n.img?`<br><img src="${n.img}" style="max-width:70%">`:''}</p>`).join('') : '';
+    `<p><b>${wesc(noteTypeLabel(n.type))} · ${wesc(n.dept||'未分科')}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${noteImgs(n).map(b=>`<br><img src="${b}" style="max-width:70%">`).join('')}</p>`).join('') : '';
   return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 ${WORD_HEAD}
 <body><h1>海马 Hippocampus · 管床数据</h1><p class="sub">导出时间：${fts(Date.now())} · 患者 ${pts.length} 人（在院 ${pts.filter(p=>p.status==='在院').length}）· 本文件含真实诊疗信息，注意保管</p>${body}${noteSec}</body></html>`;
@@ -1115,59 +1128,68 @@ function examSheet(pid, exist, opts){
 
 /* --- 图片临床记录：拍照/选图 → 可选 AI 整理 → 存为临床记录（图片随记录保存） --- */
 function noteImageSheet(){
-  let pickedBlob = null, pickedB64 = '';
+  let imgs = [];   // 压缩后的 dataURL 数组，支持多张
   const depts = [...new Set([...state.notes.map(n=>n.dept), ...state.patients.map(p=>p.dept)].filter(Boolean))];
   sheet({ title:'📷 图片临床记录', okText:'保存记录', body:`<div class="form">
       <div class="quick">
         <button class="btn ghost" id="ni-cam" style="flex:1">📷 拍照</button>
-        <button class="btn ghost" id="ni-alb" style="flex:1">🖼️ 相册 / 文件</button>
+        <button class="btn ghost" id="ni-alb" style="flex:1">🖼️ 选图（可多张）</button>
       </div>
       <input type="file" id="ni-f1" accept="image/*" capture="environment" style="display:none">
-      <input type="file" id="ni-f2" accept="image/*" style="display:none">
-      <img id="ni-prev" style="display:none;width:100%;border-radius:10px;margin-top:10px">
+      <input type="file" id="ni-f2" accept="image/*" multiple style="display:none">
+      <div id="ni-prevs" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
       <button class="btn block" id="ni-run" style="display:none;margin-top:10px">🤖 AI 整理图片内容</button>
       <label style="margin-top:10px">记录内容（AI 整理结果或自己写的，可改）</label>
-      <textarea id="ni-text" style="min-height:80px" placeholder="拍照后点 AI 整理；也可以直接写"></textarea>
+      <textarea id="ni-text" style="min-height:80px" placeholder="拍照/选图后点 AI 整理；也可以直接写"></textarea>
       <div class="quick" style="margin-top:8px">
         <select id="ni-type" style="flex:0 0 92px"><option value="note">心得</option><option value="advice">指导意见</option></select>
         <input id="ni-dept" list="ni-depts" placeholder="科室" style="flex:1" value="${esc(curDept()||state.lastDept||'')}">
         <datalist id="ni-depts">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
       </div>
       <div id="ni-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div>
-      <div class="tip" style="margin-top:8px">图片压缩后随记录保存在本机、随备份带走；AI 整理用 Provider 里配置的视觉模型，失败也不影响直接保存。</div></div>`,
+      <div class="tip" style="margin-top:8px">可一次提交多张图（板书多页、多张报告单），AI 一起分析。图片压缩后随记录保存在本机、随备份带走；AI 整理失败也不影响直接保存。</div></div>`,
     onOk: async el=>{
       const text = el.querySelector('#ni-text').value.trim();
-      if(!text && !pickedB64){ el.querySelector('#ni-err').textContent = '内容和图片至少要有一个'; return false; }
+      if(!text && !imgs.length){ el.querySelector('#ni-err').textContent = '内容和图片至少要有一个'; return false; }
       const n = { id:uid(), dept: el.querySelector('#ni-dept').value.trim() || curDept() || '未分科',
-        type: el.querySelector('#ni-type').value, text, img: pickedB64 || null, createdAt: Date.now() };
+        type: el.querySelector('#ni-type').value, text, imgs: imgs.length?imgs.slice():null, createdAt: Date.now() };
       await txPut('notes', n); state.notes.push(n); state.lastDept = n.dept;
-      await markChange(); renderNotes(); toast('图片记录已保存'); return true;
+      await markChange(); renderNotes(); toast('图片记录已保存（'+(imgs.length||0)+' 张图）'); return true;
     },
     onMount: el=>{
-      const handle = async file=>{
-        if(!file) return;
-        pickedBlob = await compressImage(file, 1280, 0.75);
-        pickedB64 = await blobToDataURL(pickedBlob);
-        const prev = el.querySelector('#ni-prev');
-        prev.src = pickedB64; prev.style.display = 'block';
-        el.querySelector('#ni-run').style.display = 'block';
+      const prevs = el.querySelector('#ni-prevs');
+      const renderPrev = ()=>{
+        prevs.innerHTML = imgs.map((b,i)=>`<div style="position:relative;flex:0 0 auto">
+          <img src="${b}" style="height:76px;border-radius:8px;display:block">
+          <button data-rm="${i}" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#c0392b;color:#fff;font-size:11px;line-height:1">✕</button>
+        </div>`).join('');
+        prevs.style.display = imgs.length?'flex':'none';
+        el.querySelector('#ni-run').style.display = imgs.length?'block':'none';
+        prevs.querySelectorAll('[data-rm]').forEach(b=> b.onclick = ()=>{ imgs.splice(+b.dataset.rm,1); renderPrev(); });
+      };
+      const handle = async files=>{
+        if(!files || !files.length) return;
         el.querySelector('#ni-err').textContent = '';
+        for(const file of files){
+          const blob = await compressImage(file, 1280, 0.75);
+          imgs.push(await blobToDataURL(blob));
+        }
+        renderPrev();
       };
       el.querySelector('#ni-cam').onclick = ()=> el.querySelector('#ni-f1').click();
       el.querySelector('#ni-alb').onclick = ()=> el.querySelector('#ni-f2').click();
-      el.querySelector('#ni-f1').onchange = e=> handle(e.target.files[0]);
-      el.querySelector('#ni-f2').onchange = e=> handle(e.target.files[0]);
+      el.querySelector('#ni-f1').onchange = e=> handle(e.target.files);
+      el.querySelector('#ni-f2').onchange = e=> handle(e.target.files);
       el.querySelector('#ni-run').onclick = async ()=>{
-        if(!pickedB64) return;
+        if(!imgs.length) return;
         const run = el.querySelector('#ni-run');
-        run.textContent = 'AI 整理中…'; run.disabled = true;
+        run.textContent = 'AI 整理中（'+imgs.length+' 张图）…'; run.disabled = true;
         try{
+          const content = imgs.map(b=>({type:'image_url', image_url:{url:b}}));
+          content.push({type:'text', text:'以上是 '+imgs.length+' 张相关图片（板书/幻灯/指南页/报告单等），请综合全部图片提取临床要点，整理成一条简洁的中文记录，可分点。只输出整理后的文字本身，不要 JSON、不要评论。'});
           const out = await callChat([
-            {role:'system', content:'你是临床记录助手。看这张图片（可能是板书、幻灯、指南页、文献截图或报告单），提取与临床相关的文字要点，整理成一条简洁的中文记录，可分点。只输出整理后的文字本身，不要 JSON、不要评论。'},
-            {role:'user', content:[
-              {type:'image_url', image_url:{url:pickedB64}},
-              {type:'text', text:'提取并整理这张图片的临床要点。'}
-            ]}
+            {role:'system', content:'你是临床记录助手。用户会给你一张或多张图片，提取与临床相关的文字要点，整理成一条简洁的中文记录，可分点。只输出整理后的文字本身，不要 JSON、不要评论。'},
+            {role:'user', content}
           ], aiModels().vision, 0.2);
           el.querySelector('#ni-text').value = out.trim();
           run.textContent = '🤖 重新整理'; run.disabled = false;
@@ -1176,6 +1198,7 @@ function noteImageSheet(){
           run.textContent = '🤖 AI 整理图片内容'; run.disabled = false;
         }
       };
+      renderPrev();
     }});
 }
 
@@ -1192,7 +1215,7 @@ function buildNotesWordDoc(typeF, deptF){
   list.forEach(n=>{ const d = n.dept||'未分科'; (groups[d]=groups[d]||[]).push(n); });
   const body = Object.keys(groups).sort((a,b)=>a.localeCompare(b,'zh')).map(d=>
     `<h2>${wesc(d)} · ${groups[d].length} 条</h2>` + groups[d].map(n=>
-      `<p><b>${wesc(noteTypeLabel(n.type))}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${n.img?`<br><img src="${n.img}">`:''}</p>`).join('')).join('');
+      `<p><b>${wesc(noteTypeLabel(n.type))}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}${noteImgs(n).map(b=>`<br><img src="${b}">`).join('')}</p>`).join('')).join('');
   return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
 ${WORD_HEAD}
 <body><h1>临床记录 · ${wesc(typeText)}</h1><p class="sub">范围：${wesc(deptText)} · 共 ${list.length} 条 · 导出时间：${fts(Date.now())} · 含真实临床信息，注意保管</p>${body}</body></html>`;
