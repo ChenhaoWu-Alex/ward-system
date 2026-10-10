@@ -6,12 +6,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="管床">
+<meta name="apple-mobile-web-app-title" content="海马">
 <meta name="theme-color" content="#0a6e5c">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<title>管床</title>
+<title>海马 · Hippocampus</title>
 <style>
 :root{
   --c-main:#0a6e5c; --c-main-dark:#085a4b; --c-main-soft:#e3f0ed;
@@ -185,13 +185,29 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 14px 20
   background:rgba(30,45,40,.92);color:#fff;font-size:14px;padding:9px 18px;border-radius:20px;z-index:99;
   opacity:0;pointer-events:none;transition:all .25s;max-width:80vw;text-align:center}
 #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* 病区快速入口行 */
+.quick-entrys{display:flex;gap:8px;margin:6px 0 14px}
+.quick-entrys .ent{flex:1;background:var(--c-card);border:1px solid var(--c-line);border-radius:12px;padding:11px 4px;
+  font-size:13px;font-weight:600;color:var(--c-main);box-shadow:0 1px 2px rgba(30,50,45,.04)}
+.quick-entrys .ent:active{background:var(--c-main-soft)}
+
+/* 待办 / 速记全屏页：复用患者详情页的结构样式 */
+#todos-page,#notes-page{position:fixed;inset:0;z-index:50;background:var(--c-bg);display:none;flex-direction:column;max-width:560px;margin:0 auto}
+#todos-page.on,#notes-page.on{display:flex}
+#todos-page .pbar,#notes-page .pbar{padding:calc(var(--sat) + 10px) 12px 10px;display:flex;align-items:center;gap:6px;background:var(--c-bg)}
+#todos-page .pbar .back,#notes-page .pbar .back{font-size:22px;padding:2px 10px;color:var(--c-main);font-weight:700}
+#todos-page .pbar .tt,#notes-page .pbar .tt{flex:1;font-size:18px;font-weight:700}
+
+/* 待办行「转档案」按钮 */
+.todo .arc{color:var(--c-main);font-size:12px;padding:3px 7px;flex-shrink:0;border:1px solid var(--c-line);border-radius:8px;background:#fff}
 </style>
 </head>
 <body>
 
 <!-- 锁屏 -->
 <div id="lock">
-  <div class="logo">管</div>
+  <div class="logo">H</div>
   <h2 id="lock-title">输入 PIN 解锁</h2>
   <div class="hint">数据只存在本机，PIN 防的是旁人随手翻看</div>
   <input id="lock-input" type="tel" inputmode="numeric" maxlength="6" placeholder="PIN 码" autocomplete="off">
@@ -206,14 +222,12 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 14px 20
 <!-- 主界面 -->
 <div id="app">
   <header class="appbar">
-    <h1 id="bar-title">管床</h1>
+    <h1 id="bar-title">海马</h1>
     <button class="add" id="btn-add-pt" title="新建患者">＋</button>
   </header>
   <main id="main">
     <!-- 病区 -->
     <section class="view on" id="view-ward"></section>
-    <!-- 待办 -->
-    <section class="view" id="view-todos"></section>
     <!-- 我的 -->
     <section class="view" id="view-more"></section>
   </main>
@@ -221,10 +235,6 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 14px 20
     <button data-tab="ward" class="on">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 18h18"/><path d="M19 10V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v4"/><circle cx="9" cy="14" r="0.5"/></svg>
       病区<span class="bdg" id="bdg-ward"></span>
-    </button>
-    <button data-tab="todos">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8.5 8 1.8 1.8L14 6.2"/><path d="M8.5 15.5h7"/></svg>
-      待办<span class="bdg" id="bdg-todos"></span>
     </button>
     <button data-tab="more">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>
@@ -249,6 +259,24 @@ main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:4px 14px 20
   <div class="pbody" id="p-body"></div>
 </div>
 
+<!-- 待办全屏页 -->
+<div id="todos-page">
+  <div class="pbar">
+    <button class="back" id="tp-back">‹</button>
+    <div class="tt">全病区待办</div>
+  </div>
+  <div class="pbody" id="tp-body" style="padding-top:0"></div>
+</div>
+
+<!-- 速记全屏页 -->
+<div id="notes-page">
+  <div class="pbar">
+    <button class="back" id="np-back">‹</button>
+    <div class="tt">速记 · 科室心得</div>
+  </div>
+  <div class="pbody" id="np-body" style="padding-top:0"></div>
+</div>
+
 <div id="toast"></div>
 <input type="file" id="file-in" accept=".json,application/json" style="display:none">
 
@@ -260,7 +288,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const md = d => (d || '').slice(5).replace('-', '/');
-const APP_VER = '1.0.0';
+const APP_VER = '1.11.1';
 function cyrb53(str, seed = 0){ let h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
   for(let i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
   h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
@@ -273,13 +301,25 @@ function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('on
 /* ================= 数据库 ================= */
 let db;
 function openDB(){ return new Promise((res,rej)=>{
-  const r = indexedDB.open('wardDB', 1);
+  let settled = false;
+  const r = indexedDB.open('wardDB', 3);
+  // 升级被其他未关闭的页面阻塞时，IndexedDB 会无声挂起——用超时把故障变成看得见的提示
+  const tm = setTimeout(()=>{ if(!settled){ settled = true;
+    rej(new Error('数据库打开超时。请彻底关闭所有海马页面（含其他标签/窗口）后重新打开；仍不行则重启浏览器。')); } }, 8000);
   r.onupgradeneeded = e => { const d=e.target.result;
-    d.createObjectStore('patients',{keyPath:'id'});
-    d.createObjectStore('todos',{keyPath:'id'});
-    d.createObjectStore('exams',{keyPath:'id'});
-    d.createObjectStore('meta',{keyPath:'k'}); };
-  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });}
+    if(!d.objectStoreNames.contains('patients')) d.createObjectStore('patients',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('todos')) d.createObjectStore('todos',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('exams')) d.createObjectStore('exams',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('meta')) d.createObjectStore('meta',{keyPath:'k'});
+    if(!d.objectStoreNames.contains('notes')) d.createObjectStore('notes',{keyPath:'id'});
+    if(!d.objectStoreNames.contains('plays')) d.createObjectStore('plays',{keyPath:'id'}); };
+  r.onblocked = () => { /* 旧版本页面还开着：等它关闭；超时兜底会提示用户 */ };
+  r.onsuccess = () => { if(!settled){ settled = true; clearTimeout(tm);
+    const d = r.result;
+    // 未来版本升级时，本页面若还在旧版本上，主动关闭连接放行升级（防两头开页面卡死）
+    try{ d.onversionchange = () => { try{ d.close(); }catch(e){} location.reload(); }; }catch(e){}
+    res(d); } };
+  r.onerror = () => { if(!settled){ settled = true; clearTimeout(tm); rej(r.error); } }; });}
 const txPut=(st,v)=>new Promise((res,rej)=>{const t=db.transaction(st,'readwrite');t.objectStore(st).put(v);t.oncomplete=res;t.onerror=()=>rej(t.error);});
 const txDel=(st,k)=>new Promise((res,rej)=>{const t=db.transaction(st,'readwrite');t.objectStore(st).delete(k);t.oncomplete=res;t.onerror=()=>rej(t.error);});
 const txAll=(st)=>new Promise((res,rej)=>{const r=db.transaction(st).objectStore(st).getAll();r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});
@@ -288,24 +328,30 @@ async function metaGet(){ return (await txAll('meta')).find(x=>x.k==='main') || 
 const metaPut = m => txPut('meta', m);
 
 /* ================= 状态 ================= */
-const state = { patients:[], todos:[], exams:[], meta:{k:'main'}, tab:'ward', cur:null, pTab:'ov', showDone:false, showOut:false };
+const state = { patients:[], todos:[], exams:[], notes:[], plays:[], meta:{k:'main'}, tab:'ward', cur:null, pTab:'ov', showDone:false, showOut:false, lastDept:'', lastPlay:'' };
 
 function sortPt(a,b){ const A=(a.bed||'').trim(), B=(b.bed||'').trim();
   const na=parseFloat(A), nb=parseFloat(B);
   if(!isNaN(na)&&!isNaN(nb)&&String(na)===A.replace(/床$/,'')&&String(nb)===B.replace(/床$/,'')) return na-nb;
   return A.localeCompare(B,'zh',{numeric:true}); }
-const activePts = () => state.patients.filter(p=>p.status==='在院').sort(sortPt);
+const curDept = () => state.meta.curDept || '';
+const inCurDept = p => !curDept() || !p.dept || p.dept===curDept();
+const activePts = () => state.patients.filter(p=>p.status==='在院' && inCurDept(p)).sort(sortPt);
 const outPts = () => state.patients.filter(p=>p.status!=='在院').sort(sortPt);
 const ptById = id => state.patients.find(p=>p.id===id);
 function ptName(p){ const b=(p.bed||'').replace(/床$/,''); return b ? b+'床·'+(p.name||'') : (p.name||'未命名'); }
 const openTodos = pid => state.todos.filter(t=>t.patientId===pid && !t.done).sort((a,b)=>b.createdAt-a.createdAt);
-const openTodoAll = () => state.todos.filter(t=>!t.done);
+const openTodoAll = () => state.todos.filter(t=>{
+  if(t.done) return false;
+  const p = ptById(t.patientId);
+  return !p || inCurDept(p);   // 患者已删除的待办保留；患者属于其他科室的隐藏
+});
 const examsOf = pid => state.exams.filter(x=>x.patientId===pid)
   .sort((a,b)=> (b.date||'').localeCompare(a.date||'') || b.createdAt-a.createdAt);
 
 async function markChange(){
   state.meta.changes = (state.meta.changes||0) + 1;
-  state.meta.autoBackup = JSON.stringify({patients:state.patients, todos:state.todos, exams:state.exams});
+  state.meta.autoBackup = JSON.stringify({patients:state.patients, todos:state.todos, exams:state.exams, notes:state.notes, plays:state.plays});
   state.meta.autoBackupAt = Date.now();
   await metaPut(state.meta);
 }
@@ -313,6 +359,8 @@ async function loadAll(){
   state.patients = await txAll('patients');
   state.todos = await txAll('todos');
   state.exams = await txAll('exams');
+  state.notes = await txAll('notes');
+  state.plays = await txAll('plays').catch(()=>[]);
   state.meta = await metaGet();
 }
 
@@ -355,12 +403,17 @@ async function resetAll(){
 /* ================= 渲染：病区 ================= */
 function renderWard(){
   const pts = activePts(), outs = outPts();
-  let h = '';
+  const nTodos = openTodoAll().length;
+  let h = `<div class="quick-entrys">
+    <button class="ent" id="ent-todos">✅ 待办${nTodos?` (${nTodos})`:''}</button>
+    <button class="ent" id="ent-voice">🎙️ 语音</button>
+    <button class="ent" id="ent-notes">💡 速记</button>
+  </div>`;
   if(!pts.length && !outs.length){
     h += `<div class="empty"><div class="big">🛏️</div>还没有患者<br>点右上角 ＋ 建第一位管床患者</div>`;
   }
   if(pts.length){
-    h += `<div class="sect"><span>在院 ${pts.length} 人</span></div>`;
+    h += `<div class="sect"><span>${curDept()?esc(curDept())+' · ':''}在院 ${pts.length} 人</span><span class="link" id="ward-dept">${curDept()?'切换科室':'设置科室'}</span></div>`;
     h += pts.map(ptCard).join('');
   }
   if(outs.length){
@@ -369,9 +422,13 @@ function renderWard(){
   }
   $('#view-ward').innerHTML = h;
   const tg = $('#toggle-out'); if(tg) tg.onclick = ()=>{ state.showOut=!state.showOut; renderWard(); };
+  const wd = $('#ward-dept'); if(wd) wd.onclick = deptSheet;
   $('#view-ward').querySelectorAll('.pt').forEach(el=>{
     el.onclick = ()=> openPatient(el.dataset.id);
   });
+  const et=$('#ent-todos'); if(et) et.onclick = ()=>{ if(!state.patients.length) return toast('先在病区建患者'); openTodosPage(); };
+  const ev=$('#ent-voice'); if(ev) ev.onclick = ()=>{ if(!activePts().length) return toast('先在病区建患者'); voiceSheet(); };
+  const en=$('#ent-notes'); if(en) en.onclick = openNotesPage;
 }
 function ptCard(p){
   const n = openTodos(p.id).length;
@@ -410,8 +467,8 @@ function renderTodos(){
       h += `<div class="card" style="padding:2px 12px">` + dones.map(t=>todoRow(t,true)).join('') + `</div>`;
     }
   }
-  $('#view-todos').innerHTML = h;
-  bindTodoOps($('#view-todos'));
+  $('#tp-body').innerHTML = h;
+  bindTodoOps($('#tp-body'));
   const qAdd = $('#q-add');
   if(qAdd){
     const doAdd = async ()=>{
@@ -426,8 +483,52 @@ function renderTodos(){
   const ve = $('#voice-entry'); if(ve) ve.onclick = voiceSheet;
   const td = $('#toggle-done'); if(td) td.onclick = ()=>{ state.showDone=!state.showDone; renderTodos(); };
 }
+function openTodosPage(){ renderTodos(); $('#todos-page').classList.add('on'); }
+
+/* ---- 速记（科室心得） ---- */
+function renderNotes(){
+  const el = $('#np-body'); if(!el) return;
+  const depts = [...new Set(state.notes.map(n=>n.dept||'未分科'))];
+  let h = `<div class="quick" style="margin-top:10px">
+    <input id="nt-dept" list="dept-list" placeholder="科室" style="flex:0 0 92px" value="${esc(curDept()||state.lastDept||'')}">
+    <datalist id="dept-list">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+    <input id="nt-txt" placeholder="一句心得、老师要点、科室套路…">
+    <button class="btn" id="nt-add">记</button></div>`;
+  if(!state.notes.length){
+    h += `<div class="empty"><div class="big">💡</div>各科室的习惯、老师教的要点、自己的心得<br>随手一条，按科室归档，备份一起带走</div>`;
+  } else {
+    for(const d of depts){
+      const list = state.notes.filter(n=>(n.dept||'未分科')===d).sort((a,b)=>b.createdAt-a.createdAt);
+      h += `<div class="todo-group"><div class="g-head">${esc(d)} · ${list.length}</div><div class="card" style="padding:2px 12px">`+
+        list.map(n=>`<div class="todo" data-id="${n.id}">
+          <div class="txt"><div class="t1" style="white-space:pre-wrap">${esc(n.text)}</div><div class="t2">${esc(md(isoToDate(n.createdAt)))}</div></div>
+          <button class="del" data-op="del">✕</button></div>`).join('')+
+        `</div></div>`;
+    }
+  }
+  el.innerHTML = h;
+  const add = async ()=>{
+    const txt = $('#nt-txt').value.trim(); if(!txt) return toast('先写内容');
+    const dept = $('#nt-dept').value.trim();
+    const n = { id:uid(), dept, text:txt, createdAt:Date.now() };
+    await txPut('notes', n); state.notes.push(n); state.lastDept = dept;
+    await markChange(); renderNotes(); toast('已记下');
+  };
+  $('#nt-add').onclick = add;
+  $('#nt-txt').onkeydown = e=>{ if(e.key==='Enter') add(); };
+  el.querySelectorAll('.todo .del').forEach(b=>{
+    b.onclick = async ()=>{
+      const id = b.closest('.todo').dataset.id;
+      if(!await confirmBox('删除这条速记？')) return;
+      await txDel('notes', id); state.notes = state.notes.filter(n=>n.id!==id);
+      await markChange(); renderNotes();
+    };
+  });
+}
+function openNotesPage(){ renderNotes(); $('#notes-page').classList.add('on'); }
 function todoRow(t, doneView){
   const p = ptById(t.patientId);
+  const canArchive = !doneView && /检|MRI|CT|超声|血|造影|心电|镜|片|培养|穿刺|病理/.test(t.text||'');
   return `<div class="todo ${t.done?'done':''}" data-id="${t.id}">
     <button class="chk ${t.done?'on':''}" data-op="toggle">${t.done?'✓':''}</button>
     <div class="txt">
@@ -436,23 +537,32 @@ function todoRow(t, doneView){
         ? `完成于 ${md(isoToDate(t.doneAt))}`
         : `${p&&p.status!=='在院'?esc(ptName(p))+' · ':''}${t.due?`<span class="due">${md(t.due)}前</span> `:''}${fmtCreated(t.createdAt)}`}</div>
     </div>
+    ${canArchive?`<button class="arc" data-op="arc">→档</button>`:''}
     <button class="del" data-op="del">✕</button>
   </div>`;
 }
 const isoToDate = ts => { const d=new Date(ts); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
 const fmtCreated = ts => { const d=isoToDate(ts); return d===today()?'今天建的':md(d)+'建的'; };
+function refreshPBodyIfOpen(){
+  if(state.cur && $('#ppage').classList.contains('on') && state.pTab==='ov') renderPBody();
+}
 function bindTodoOps(root){
   root.querySelectorAll('.todo').forEach(row=>{
     const id = row.dataset.id;
     row.querySelector('[data-op=toggle]').onclick = async ()=>{
       const t = state.todos.find(x=>x.id===id); if(!t) return;
       t.done = !t.done; t.doneAt = t.done ? Date.now() : null;
-      await txPut('todos', t); await markChange(); renderAll();
+      await txPut('todos', t); await markChange(); renderAll(); refreshPBodyIfOpen();
+    };
+    const arc = row.querySelector('[data-op=arc]');
+    if(arc) arc.onclick = ()=>{
+      const t = state.todos.find(x=>x.id===id); if(!t) return;
+      examSheet(t.patientId, { id:uid(), patientId:t.patientId, date:today(), title:t.text, findings:'', important:false, createdAt:Date.now() }, { fromTodo:t.id });
     };
     row.querySelector('[data-op=del]').onclick = async ()=>{
       const t = state.todos.find(x=>x.id===id); if(!t) return;
       if(!await confirmBox(`删除待办「${t.text.slice(0,20)}」？`)) return;
-      await txDel('todos', id); await markChange(); renderAll(); toast('已删除');
+      await txDel('todos', id); await markChange(); renderAll(); refreshPBodyIfOpen(); toast('已删除');
     };
   });
 }
@@ -466,6 +576,10 @@ function renderMore(){
   const m = state.meta;
   const chg = m.changes||0;
   $('#view-more').innerHTML = `
+  <div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 14px">
+    <div style="flex:1"><div style="font-size:12px;color:var(--c-sub)">当前科室（轮转语境）</div><div style="font-size:16px;font-weight:600">${esc(curDept()||'未设置')}</div></div>
+    <button class="btn sm ghost" id="btn-dept">切换</button>
+  </div>
   <div class="card stat">
     <div><div class="v">${activePts().length}</div><div class="k">在院患者</div></div>
     <div><div class="v">${openTodoAll().length}</div><div class="k">未办待办</div></div>
@@ -474,11 +588,13 @@ function renderMore(){
   ${chg ? `<div class="card tip" style="border:1px solid #f0d9b5;background:#fdf8ef">⚠️ 距上次备份已有 <b>${chg}</b> 条改动。建议现在导出一次备份到 iCloud「文件」。</div>` : ''}
   <div class="card menu">
     <button class="mi" id="mi-export"><span>📤 导出备份</span><span class="r">存到 iCloud「文件」</span></button>
+    <button class="mi" id="mi-data"><span>📊 导出数据查看版</span><span class="r">Excel / Word</span></button>
     <button class="mi" id="mi-import"><span>📥 导入备份</span><span class="r">覆盖恢复</span></button>
     <button class="mi" id="mi-restore"><span>♻️ 恢复手机内自动备份</span><span class="r">${m.autoBackupAt?('备于 '+md(isoToDate(m.autoBackupAt))):'暂无'}</span></button>
   </div>
   <div class="card menu">
-    <button class="mi" id="mi-ai"><span>🤖 AI 设置（智谱 GLM）</span><span class="r ${m.aiKey?'':'warn'}">${m.aiKey?'已配置':'未配置'}</span></button>
+    <button class="mi" id="mi-ai"><span>🤖 Provider</span><span class="r ${aiKeyFor()?'':'warn'}">${aiKeyFor()?'已配置':'未配置'}</span></button>
+    <button class="mi" id="mi-plays"><span>📐 科室套路（AI 参考）</span><span class="r">${state.plays.length} 条</span></button>
     <button class="mi" id="mi-pin"><span>🔒 PIN 锁</span><span class="r ${m.pinHash?'':'warn'}">${m.pinHash?'已开启':'未开启'}</span></button>
     <button class="mi" id="mi-out"><span>🏥 已出院 / 转科管理</span><span class="r">${outPts().length} 人</span></button>
   </div>
@@ -488,13 +604,56 @@ function renderMore(){
     <b>换设备写数据前</b>，先确认另一台没在同时改（没有云同步，两头写会互相覆盖）。<br>
     <b>隐私：</b>含真实姓名的数据别截图外发；PIN 只防旁人随手翻看，不是加密。
   </div>
-  <div style="text-align:center;color:#aab6b1;font-size:12px;padding:6px 0 14px">管床系统 v${APP_VER}</div>`;
+  <div style="text-align:center;color:#aab6b1;font-size:12px;padding:6px 0 14px">海马 Hippocampus v${APP_VER}</div>`;
   $('#mi-export').onclick = exportBackup;
+  $('#mi-data').onclick = exportSheet;
+  $('#btn-dept').onclick = deptSheet;
   $('#mi-import').onclick = ()=> $('#file-in').click();
   $('#mi-restore').onclick = restoreAuto;
   $('#mi-ai').onclick = aiSheet;
+  $('#mi-plays').onclick = playsSheet;
   $('#mi-pin').onclick = pinSheet;
   $('#mi-out').onclick = outSheet;
+}
+
+/* --- 科室套路：科室特异的工作规矩，AI 整理/拆解时可选用作参考 --- */
+const playTextOf = pid => (state.plays.find(x=>x.id===pid)||{}).text || '';
+function playsSheet(){
+  const depts = [...new Set(state.plays.map(p=>p.dept).filter(Boolean))];
+  const groups = depts.map(d=>`<div style="margin-top:10px"><div style="font-size:13px;color:var(--c-sub);margin-bottom:4px">${esc(d)}</div>`
+    + state.plays.filter(p=>p.dept===d).map(y=>`<div class="card" style="padding:8px 10px;margin-bottom:6px;display:flex;gap:8px;align-items:flex-start">
+      <div style="flex:1;font-size:13px;white-space:pre-wrap">${esc(y.text.length>120?y.text.slice(0,120)+'…':y.text)}</div>
+      <button class="del" data-op="del" data-id="${y.id}" style="flex:0 0 auto">✕</button></div>`).join('') + `</div>`).join('');
+  sheet({ title:'📐 科室套路（AI 参考）', okText:'保存套路', body:`<div class="form">
+      <div class="tip">每个科室安排检查、写病历有自己的套路。把套路贴进来（比如「入院先做 CT 再做钡餐，钡餐仅周三周五上午」「家族史落句＝否认家族遗传病史及类似疾病史」），AI 整理病史 / 拆待办时选上它，输出就会照这个科室的规矩来。建议贴精简版，一条套路管一个科室。</div>
+      ${groups || '<div class="empty">还没有套路，在下面添加第一条</div>'}
+      <label>科室名</label><input id="pl-dept" list="pl-depts" placeholder="如 普外 / 神外">
+      <datalist id="pl-depts">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+      <label>套路内容（从轮转心得里粘贴精简版）</label><textarea id="pl-text" style="min-height:140px" placeholder="入院先做胸腹盆腔 CT，再做钡餐；钡餐仅周三、周五上午可做&#10;心电图尽可能入院完成&#10;家族史落句：否认家族遗传病史及类似疾病史"></textarea>
+      <div id="pl-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
+    onOk: async el=>{
+      const dept = el.querySelector('#pl-dept').value.trim();
+      const text = el.querySelector('#pl-text').value.trim();
+      if(!text){ el.querySelector('#pl-err').textContent='套路内容不能为空'; return false; }
+      const y = { id:uid(), dept: dept || (state.lastDept||'未分科'), text, createdAt:Date.now() };
+      await txPut('plays', y); state.plays.push(y);
+      await markChange(); renderMore(); toast('套路已保存'); return true;
+    },
+    onMount: el=>{
+      el.querySelectorAll('[data-op=del]').forEach(b=>{
+        b.onclick = async ()=>{
+          const id = b.dataset.id;
+          if(!await confirmBox('删除这条套路？')) return;
+          await txDel('plays', id); state.plays = state.plays.filter(x=>x.id!==id);
+          await markChange(); closeSheet(); playsSheet(); toast('已删除');
+        };
+      });
+    }});
+}
+/* 把选中的套路拼成 system prompt 附加段 */
+function playPromptAppend(pid){
+  const t = playTextOf(pid).trim();
+  return t ? `\n\n【本科室的工作套路——输出必须遵循，与通用规则冲突时以套路为准】\n${t}\n（套路中与固定表述、书写顺序、格式、时间安排有关的要求，必须逐字落实到输出的对应内容中，不得省略。）` : '';
 }
 function pinSheet(){
   const m = state.meta;
@@ -526,7 +685,7 @@ function outSheet(){
     title:`已出院 / 转科（${outs.length}）`,
     body: outs.length ? `<div class="sheet-act">` + outs.map(p=>`
       <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--c-line);padding:8px 2px">
-        <div style="flex:1"><b>${esc(ptName(p))}</b><div style="font-size:12px;color:var(--c-sub)">${esc(p.status)}${p.dischargedAt?(' · '+md(isoToDate(p.dischargedAt))):''}</div></div>
+        <div style="flex:1"><b>${esc(ptName(p))}</b><div style="font-size:12px;color:var(--c-sub)">${esc(p.status)}${p.transDept?(' · 转往'+esc(p.transDept)):''}${p.dischargedAt?(' · '+md(isoToDate(p.dischargedAt))):''}</div></div>
         <button class="btn sm ghost" data-act="back" data-id="${p.id}">恢复在院</button>
         <button class="btn sm danger" data-act="kill" data-id="${p.id}">彻底删除</button>
       </div>`).join('') + `</div>` : `<div class="empty">没有出院患者</div>`,
@@ -534,7 +693,7 @@ function outSheet(){
     onMount: el => el.querySelectorAll('[data-act]').forEach(b=>{
       b.onclick = async ()=>{
         const p = ptById(b.dataset.id); if(!p) return;
-        if(b.dataset.act==='back'){ p.status='在院'; p.dischargedAt=null; await txPut('patients',p); await markChange(); toast('已恢复'); }
+        if(b.dataset.act==='back'){ p.status='在院'; p.dischargedAt=null; p.transDept=null; await txPut('patients',p); await markChange(); toast('已恢复'); }
         else { if(!await confirmBox(`彻底删除 ${ptName(p)} 及其全部待办、检查记录？不可恢复！`)) return;
           state.todos.filter(t=>t.patientId===p.id).forEach(t=>txDel('todos',t.id));
           state.exams.filter(x=>x.patientId===p.id).forEach(x=>txDel('exams',x.id));
@@ -545,16 +704,43 @@ function outSheet(){
   });
 }
 
+/* --- 当前科室（轮转切换）：病区/待办/统计按科室过滤，速记与套路自动归科 --- */
+function deptSheet(){
+  const depts = [...new Set([
+    ...state.patients.map(p=>p.dept), ...state.notes.map(n=>n.dept),
+    ...state.plays.map(p=>p.dept), state.lastDept, state.meta.curDept
+  ].filter(Boolean))];
+  sheet({ title:'🏥 当前科室（轮转切换）', okText:'切换到这里',
+    body:`<div class="form">
+      <div class="tip">你转到哪个科，就切到哪个科：病区、待办、统计只显示这个科的患者；新速记自动归到这个科；AI 套路也按科室管理。之前科室的数据全部保留，随时切回来看。</div>
+      <label>科室名</label>
+      <input id="dp-name" list="dp-list" value="${esc(curDept())}" placeholder="如 普外科 / 神经外科">
+      <datalist id="dp-list">${depts.map(d=>`<option value="${esc(d)}">`).join('')}</datalist>
+      <div id="dp-err" style="color:var(--c-danger);font-size:13px;margin-top:6px"></div></div>`,
+    onOk: async el=>{
+      const v = el.querySelector('#dp-name').value.trim();
+      if(!v){ el.querySelector('#dp-err').textContent = '科室名不能为空'; return false; }
+      state.meta.curDept = v;
+      state.lastDept = v;
+      await metaPut(state.meta);
+      renderAll(); toast('已切换到 '+v); return true;
+    }});
+}
+
 /* ================= 备份 ================= */
 function buildBackup(){
-  return { app:'ward-system', ver:1, exportedAt:new Date().toISOString(),
-    patients:state.patients, todos:state.todos, exams:state.exams };
+  const m = state.meta;
+  return { app:'ward-system', ver:4, exportedAt:new Date().toISOString(),
+    patients:state.patients, todos:state.todos, exams:state.exams, notes:state.notes, plays:state.plays,
+    /* AI 配置随备份走（key 出于安全不进备份，恢复后粘一次即可） */
+    aiCfg: { prov:m.aiProv||null, base:m.aiBase||null, chat:m.aiModelChat||null, vision:m.aiModelVision||null, asr:m.aiModelAsr||null, asrUrl:m.aiAsrUrl||null },
+    cfg: { curDept: curDept()||null } };
 }
 async function exportBackup(){
   try{
     const data = buildBackup();
     const d = new Date(); const stamp = d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
-    const name = `管床备份-${stamp}.json`;
+    const name = `海马备份-${stamp}.json`;
     const file = new File([JSON.stringify(data,null,2)], name, {type:'application/json'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       await navigator.share({ files:[file], title:'管床备份' });
@@ -569,36 +755,174 @@ async function exportBackup(){
     toast('导出失败：'+err.message);
   }
 }
-function importBackup(){
-  $('#file-in').onchange = async e=>{
+function importBackup(){ $('#file-in').click(); }   // 仅打开文件选择框；处理器在 init 里绑一次
+async function handleImportFile(e){
+  {
     const f = e.target.files[0]; e.target.value='';
     if(!f) return;
     try{
       const data = JSON.parse(await f.text());
       if(data.app!=='ward-system') return toast('不是本系统的备份文件');
-      if(!await confirmBox(`备份时间 ${data.exportedAt.slice(0,16).replace('T',' ')}\n患者 ${data.patients.length}、待办 ${data.todos.length}、检查 ${data.exams.length} 条。\n导入会【覆盖】手机当前全部数据，确定？`)) return;
-      await txClear('patients'); await txClear('todos'); await txClear('exams');
-      for(const p of data.patients) await txPut('patients',p);
-      for(const t of data.todos) await txPut('todos',t);
-      for(const x of data.exams) await txPut('exams',x);
+      if(!await confirmBox(`备份时间 ${data.exportedAt.slice(0,16).replace('T',' ')}\n患者 ${(data.patients||[]).length}、待办 ${(data.todos||[]).length}、检查 ${(data.exams||[]).length}、速记 ${(data.notes||[]).length}、套路 ${(data.plays||[]).length} 条。\n导入会【覆盖】手机当前全部数据，确定？`)) return;
+      await txClear('patients'); await txClear('todos'); await txClear('exams'); await txClear('notes'); await txClear('plays');
+      for(const p of data.patients||[]) await txPut('patients',p);
+      for(const t of data.todos||[]) await txPut('todos',t);
+      for(const x of data.exams||[]) await txPut('exams',x);
+      for(const n of data.notes||[]) await txPut('notes',n);
+      for(const y of data.plays||[]) await txPut('plays',y);
       await loadAll();
-      state.meta.changes=0; state.meta.autoBackup=JSON.stringify({patients:state.patients,todos:state.todos,exams:state.exams}); state.meta.autoBackupAt=Date.now();
+      if(data.aiCfg){   // 恢复 AI 配置（key 不在备份里，需重粘一次）
+        const m = state.meta, c = data.aiCfg;
+        m.aiProv = c.prov||null; m.aiBase = c.base||null;
+        m.aiModelChat = c.chat||null; m.aiModelVision = c.vision||null;
+        m.aiModelAsr = c.asr||null; m.aiAsrUrl = c.asrUrl||null;
+        await metaPut(m);
+      }
+      if(data.cfg && data.cfg.curDept){   // 恢复当前科室
+        state.meta.curDept = data.cfg.curDept; await metaPut(state.meta);
+      }
+      state.meta.changes=0; state.meta.autoBackup=JSON.stringify({patients:state.patients,todos:state.todos,exams:state.exams,notes:state.notes,plays:state.plays}); state.meta.autoBackupAt=Date.now();
       await metaPut(state.meta);
       renderAll(); toast('导入完成');
     }catch(err){ toast('导入失败：'+err.message); }
-  };
-  $('#file-in').click();
+  }
 }
 async function restoreAuto(){
   const m = state.meta;
   if(!m.autoBackup) return toast('还没有自动备份');
   if(!await confirmBox(`恢复到 ${md(isoToDate(m.autoBackupAt))} 的手机内自动备份？\n会覆盖当前数据。`)) return;
   const data = JSON.parse(m.autoBackup);
-  await txClear('patients'); await txClear('todos'); await txClear('exams');
-  for(const p of data.patients) await txPut('patients',p);
-  for(const t of data.todos) await txPut('todos',t);
-  for(const x of data.exams) await txPut('exams',x);
+  await txClear('patients'); await txClear('todos'); await txClear('exams'); await txClear('notes'); await txClear('plays');
+  for(const p of data.patients||[]) await txPut('patients',p);
+  for(const t of data.todos||[]) await txPut('todos',t);
+  for(const x of data.exams||[]) await txPut('exams',x);
+  for(const n of data.notes||[]) await txPut('notes',n);
+  for(const y of data.plays||[]) await txPut('plays',y);
   await loadAll(); renderAll(); toast('已恢复');
+}
+
+/* ================= 导出数据查看版（Excel / Word，纯前端生成，不经网络） ================= */
+function dataStamp(){
+  const d = new Date();
+  return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+}
+function sortedPts(){
+  return state.patients.slice().sort((a,b)=>
+    ((parseFloat(a.bed)>=0?parseFloat(a.bed):1e9)-(parseFloat(b.bed)>=0?parseFloat(b.bed):1e9)) ||
+    String(a.bed||'').localeCompare(String(b.bed||''),'zh') || String(a.name||'').localeCompare(String(b.name||''),'zh'));
+}
+const ptLabel = p => (p.bed? p.bed+'床':'') + (p.name? '·'+p.name : '');
+async function shareFile(blob, name, okMsg){
+  const file = new File([blob], name, {type: blob.type});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    await navigator.share({files:[file], title:name});
+  } else {
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+  }
+  toast(okMsg||'已导出');
+}
+function exportSheet(){
+  if(!state.patients.length) return toast('还没有可导出的数据');
+  sheet({ title:'📊 导出数据（查看 / 打印用）', hideOk:true,
+    body:`<div class="form">
+      <button class="btn block" id="dx-xls">📊 Excel 表格（患者 / 待办 / 检验检查 / 速记 四个工作表）</button>
+      <button class="btn block ghost" id="dx-doc" style="margin-top:8px">📄 Word 文档（按患者病历式汇总，可直接打印）</button>
+      <div class="tip" style="margin-top:10px">导出后和备份一样：分享面板选「存储到文件」→ iCloud Drive，也可直接发微信 / 邮件传到电脑打开。Word 打开 .doc 若提示格式不一致，点「是」即可。⚠️ 文件含患者姓名等真实信息，注意保管、不要外发。</div>
+      <div id="dx-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div></div>`,
+    onMount: el=>{
+      el.querySelector('#dx-xls').onclick = ()=>{
+        try{ exportExcel(); }catch(err){ el.querySelector('#dx-err').textContent='生成失败：'+err.message; }
+      };
+      el.querySelector('#dx-doc').onclick = ()=>{
+        try{ exportWord(); }catch(err){ el.querySelector('#dx-err').textContent='生成失败：'+err.message; }
+      };
+    }});
+}
+/* --- Excel：SpreadsheetML 2003，Excel/WPS/Numbers 原生可开，零依赖 --- */
+function xesc(s){
+  return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').replace(/\n/g,'&#10;');
+}
+function xlsTable(header, rows){
+  const cell = (v,st)=> '<Cell'+(st?' ss:StyleID="'+st+'"':'')+'><Data ss:Type="String">'+xesc(v)+'</Data></Cell>';
+  return '<Table><Row ss:StyleID="h">'+header.map(h=>cell(h,'h')).join('')+'</Row>'
+    + rows.map(r=>'<Row>'+r.map(c=>cell(c)).join('')+'</Row>').join('') + '</Table>';
+}
+function buildExcelXml(){
+  const ts = t => t? new Date(t).toLocaleString('zh-CN',{hour12:false}) : '';
+  const HX = ['主诉','现病史','既往史','查体要点'];
+  const shPts = xlsTable(
+    ['床号','姓名','状态','入科日期','诊断','手术/计划','备注','出院/转科时间',...HX,'建档时间'],
+    sortedPts().map(p=>{
+      const h = p.history||{};
+      return [String(p.bed||''), String(p.name||''), String(p.status||''), String(p.admission||''),
+        String(p.diagnosis||''), String(p.surgery||''), String(p.note||''),
+        p.dischargedAt? ts(p.dischargedAt):'', String(h.chief||''), String(h.present||''), String(h.past||''), String(h.exam||''), ts(p.createdAt)];
+    }));
+  const nameOf = id => { const p = state.patients.find(x=>x.id===id); return p? ptLabel(p):'(已删患者)'; };
+  const shTodos = xlsTable(
+    ['患者','待办','截止','状态','完成时间','创建时间'],
+    state.todos.slice().sort((a,b)=> (a.done?1:0)-(b.done?1:0) || (a.due||'9999').localeCompare(b.due||'9999') || (a.createdAt||0)-(b.createdAt||0))
+      .map(t=>[nameOf(t.patientId), String(t.text||''), String(t.due||''), t.done?'已完成':'未办', t.doneAt? ts(t.doneAt):'', ts(t.createdAt)]));
+  const shExams = xlsTable(
+    ['患者','日期','项目','关键结果与判读','重要'],
+    state.exams.slice().sort((a,b)=> String(b.date||'').localeCompare(String(a.date||'')))
+      .map(x=>[nameOf(x.patientId), String(x.date||''), String(x.title||''), String(x.findings||''), x.important?'★重要':'']));
+  const shNotes = xlsTable(
+    ['科室','内容','时间'],
+    state.notes.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
+      .map(n=>[String(n.dept||''), String(n.text||''), ts(n.createdAt)]));
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'
+    +'<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+    +'<Styles><Style ss:ID="h"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0A6E5C" ss:Pattern="Solid"/></Style></Styles>'
+    +'<Worksheet ss:Name="患者">'+shPts+'</Worksheet>'
+    +'<Worksheet ss:Name="待办">'+shTodos+'</Worksheet>'
+    +'<Worksheet ss:Name="检验检查">'+shExams+'</Worksheet>'
+    +'<Worksheet ss:Name="速记">'+shNotes+'</Worksheet>'
+    +'</Workbook>';
+}
+function exportExcel(){
+  const xml = buildExcelXml();
+  shareFile(new Blob(['\ufeff'+xml], {type:'application/vnd.ms-excel'}), '海马数据-'+dataStamp()+'.xls', 'Excel 已生成');
+}
+/* --- Word：HTML 兼容格式 .doc，Word/WPS 直接打开，A4 可打印 --- */
+function wesc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function buildWordHtml(){
+  const fd = s => { if(!s||!/^\d{4}-\d{2}-\d{2}$/.test(String(s))) return String(s||''); const [y,m,d]=String(s).split('-'); return y+'年'+parseInt(m)+'月'+parseInt(d)+'日'; };
+  const fts = t => t? new Date(t).toLocaleString('zh-CN',{hour12:false}) : '';
+  const pts = sortedPts();
+  const body = pts.map(p=>{
+    const h = p.history||{};
+    const todos = state.todos.filter(t=>t.patientId===p.id);
+    const open = todos.filter(t=>!t.done), done = todos.filter(t=>t.done);
+    const exams = state.exams.filter(x=>x.patientId===p.id).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+    const hxRow = (k,v)=> v? `<tr><th style="width:6em">${k}</th><td>${wesc(v).replace(/\n/g,'<br>')}</td></tr>`:'';
+    return `<h2>${wesc(p.bed?p.bed+'床':'')}${wesc(p.name?' · '+p.name:'')}　<span class="sub">${wesc(p.status||'')}${p.dischargedAt?('（'+fd(fts(p.dischargedAt).slice(0,10).replace(/\//g,'-'))+'）'):''}</span></h2>
+    <table><tr><th style="width:6em">入科日期</th><td>${fd(p.admission)}</td><th style="width:6em">诊断</th><td>${wesc(p.diagnosis||'')}</td></tr>
+    ${p.surgery?`<tr><th>手术/计划</th><td colspan="3">${wesc(p.surgery)}</td></tr>`:''}
+    ${p.note?`<tr><th>备注</th><td colspan="3">${wesc(p.note).replace(/\n/g,'<br>')}</td></tr>`:''}</table>
+    ${(h.chief||h.present||h.past||h.exam)?`<h3>病史</h3><table>${hxRow('主诉',h.chief)}${hxRow('现病史',h.present)}${hxRow('既往史',h.past)}${hxRow('查体要点',h.exam)}</table>`:''}
+    ${exams.length?`<h3>检验检查（新→旧）</h3><table><tr><th style="width:7em">日期</th><th style="width:9em">项目</th><th>关键结果与判读</th></tr>
+      ${exams.map(x=>`<tr><td>${fd(x.date)}</td><td>${wesc(x.title)}${x.important?' <span class="imp">★</span>':''}</td><td>${wesc(x.findings).replace(/\n/g,'<br>')}</td></tr>`).join('')}</table>`:''}
+    ${todos.length?`<h3>待办</h3>${open.length?`<p>${open.length} 条未办：</p><ul>${open.map(t=>`<li>${wesc(t.text)}${t.due?` <span class="imp">（${fd(t.due)}前）</span>`:''}</li>`).join('')}</ul>`:''}
+      ${done.length?`<p class="sub">已完成 ${done.length} 条。</p>`:''}`:''}`;
+  }).join('<br clear="all" style="page-break-before:always">');
+  const notes = state.notes.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const noteSec = notes.length? `<br clear="all" style="page-break-before:always"><h1>速记（科室心得）</h1>` + notes.map(n=>
+    `<p><b>${wesc(n.dept||'未分科')}</b> <span class="sub">${fts(n.createdAt)}</span><br>${wesc(n.text).replace(/\n/g,'<br>')}</p>`).join('') : '';
+  return `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>海马数据导出</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
+<style>@page{size:A4;margin:2cm} body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:12pt;color:#111}
+h1{font-size:18pt;color:#0a6e5c} h2{font-size:14pt;color:#0a6e5c;border-bottom:2px solid #0a6e5c;padding-bottom:4px} h3{font-size:12pt;margin:10pt 0 4pt}
+table{border-collapse:collapse;width:100%;margin:4pt 0} th,td{border:1px solid #999;padding:4pt 6pt;font-size:10.5pt;text-align:left;vertical-align:top}
+th{background:#e8f2ef;font-weight:bold} .imp{color:#c0392b;font-weight:bold} .sub{color:#666;font-size:9pt;font-weight:normal}
+ul{margin:2pt 0;padding-left:18pt} p{margin:4pt 0}</style></head>
+<body><h1>海马 Hippocampus · 管床数据</h1><p class="sub">导出时间：${fts(Date.now())} · 患者 ${pts.length} 人（在院 ${pts.filter(p=>p.status==='在院').length}）· 本文件含真实诊疗信息，注意保管</p>${body}${noteSec}</body></html>`;
+}
+function exportWord(){
+  const html = buildWordHtml();
+  shareFile(new Blob([html], {type:'application/msword'}), '海马数据-'+dataStamp()+'.doc', 'Word 已生成');
 }
 
 /* ================= 患者详情 ================= */
@@ -609,7 +933,8 @@ function openPatient(id){
   $('#p-meta').innerHTML =
     `${p.diagnosis?`<div>诊断：${esc(p.diagnosis)}</div>`:''}` +
     `${p.surgery?`<div>手术：${esc(p.surgery)}</div>`:''}` +
-    `${p.admission?`<div>入科：${md(p.admission)}</div>`:''}`;
+    `${p.admission?`<div>入科：${md(p.admission)}</div>`:''}` +
+    `${p.status==='转科'&&p.transDept?`<div style="color:var(--c-danger)">转往：${esc(p.transDept)}</div>`:''}`;
   state.pTab='ov';
   $('#p-seg').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.pt==='ov'));
   renderPBody();
@@ -628,6 +953,7 @@ function renderPBody(){
       <div class="quick" style="margin-top:10px">
         <input id="pv-txt" placeholder="给本床加待办，回车即存">
         <button class="btn" id="pv-add">添加</button></div>
+      <button class="btn ghost block" id="pv-voice" style="margin-top:8px">🎙️ 语音记录（拆待办 / 整理病史）</button>
       <div class="sect"><span>管理</span></div>
       <div class="card" style="padding:6px">
         <button class="btn danger block" id="pv-out" style="background:#fbeeeb;color:var(--c-danger);margin:6px 0">${p.status==='在院'?'出院 / 转科归档':'恢复为在院'}</button>
@@ -638,11 +964,12 @@ function renderPBody(){
       await addTodo(p.id, v); $('#pv-txt').value=''; renderPBody(); renderAll(); };
     $('#pv-add').onclick = doAdd;
     $('#pv-txt').onkeydown = e=>{ if(e.key==='Enter') doAdd(); };
+    $('#pv-voice').onclick = voiceSheet;
     $('#pv-out').onclick = async ()=>{
       if(p.status==='在院'){
         if(!await confirmBox(`${ptName(p)} 出院 / 转科归档？\n归档后从病区列表移入「已出院」，可恢复。`)) return;
         p.status = '已出院'; p.dischargedAt = Date.now();
-      } else { p.status='在院'; p.dischargedAt=null; }
+      } else { p.status='在院'; p.dischargedAt=null; p.transDept=null; }
       await txPut('patients',p); await markChange(); renderAll(); openPatient(p.id);
     };
   }
@@ -700,9 +1027,10 @@ function renderPBody(){
     });
   }
 }
-function examSheet(pid, exist){
+function examSheet(pid, exist, opts){
+  opts = opts||{};
   const p = ptById(pid);
-  sheet({ title: exist?'修改检查记录':'记录检验检查', okText:'保存',
+  sheet({ title: opts.fromTodo?'转档案 · 记录检验检查':(exist?'修改检查记录':'记录检验检查'), okText:'保存',
     body:`<div class="form">
       <label>日期</label><input type="date" id="ex-date" value="${exist?esc(exist.date):today()}">
       <label>项目（如：血常规 / 头颅 CT）</label><input id="ex-title" value="${exist?esc(exist.title):''}">
@@ -718,7 +1046,12 @@ function examSheet(pid, exist){
       rec.important = el.querySelector('#ex-imp').checked;
       await txPut('exams',rec);
       if(!state.exams.find(e=>e.id===rec.id)) state.exams.push(rec);
-      await markChange(); renderPBody(); renderWard(); renderAll(); toast('已记录'); return true;
+      if(opts.fromTodo){
+        const t = state.todos.find(x=>x.id===opts.fromTodo);
+        if(t && !t.done){ t.done = true; t.doneAt = Date.now(); await txPut('todos', t); }
+      }
+      await markChange(); renderPBody(); renderWard(); renderAll();
+      toast(opts.fromTodo?'已建档，待办已勾掉':'已记录'); return true;
     }});
 }
 
@@ -736,7 +1069,15 @@ function patientSheet(existId, noteOnly){
       <label>诊断</label><input id="f-dx" value="${p?esc(p.diagnosis||''):''}" placeholder="如 颞叶癫痫（药物难治性）">
       <label>手术 / 计划</label><input id="f-op" value="${p?esc(p.surgery||''):''}" placeholder="如 拟 SEEG：左颞">
       <label>状态</label><select id="f-st">
-        ${['在院','已出院','转科'].map(s=>`<option ${p&&p.status===s?'selected':''}>${s}</option>`).join('')}</select>`}
+        ${['在院','已出院','转科'].map(s=>`<option ${p&&p.status===s?'selected':''}>${s}</option>`).join('')}</select>
+      <div id="f-trans-row" style="display:${p&&p.status==='转科'?'block':'none'}">
+        <label>转往科室（记录去向，可随时恢复）</label>
+        <input id="f-trans" list="f-trans-list" value="${p?esc(p.transDept||''):''}" placeholder="如 神经内科 / ICU">
+        <datalist id="f-trans-list">
+          <option>神经内科</option><option>ICU</option><option>神经外科</option><option>普外科</option>
+          <option>骨科</option><option>心内科</option><option>呼吸内科</option><option>消化内科</option><option>康复科</option>
+        </datalist>
+      </div>`}
       <label>备注（过敏、家属、注意事项…）</label><textarea id="f-note">${p?esc(p.note||''):''}</textarea></div>`,
     onOk: async el=>{
       const name = el.querySelector('#f-name').value.trim();
@@ -747,19 +1088,27 @@ function patientSheet(existId, noteOnly){
         if(!noteOnly){
           p.admission=el.querySelector('#f-adm').value; p.diagnosis=el.querySelector('#f-dx').value.trim();
           p.surgery=el.querySelector('#f-op').value.trim(); p.status=el.querySelector('#f-st').value;
+          p.transDept = p.status==='转科' ? (el.querySelector('#f-trans').value.trim()||null) : null;
           if(p.status!=='在院' && !p.dischargedAt) p.dischargedAt=Date.now();
-          if(p.status==='在院') p.dischargedAt=null;
+          if(p.status==='在院'){ p.dischargedAt=null; }
         }
         await txPut('patients',p); await markChange();
         if(state.cur===p.id) openPatient(p.id);
       } else {
         const np = { id:uid(), bed, name, note:el.querySelector('#f-note').value.trim(),
           admission:el.querySelector('#f-adm').value, diagnosis:el.querySelector('#f-dx').value.trim(),
-          surgery:el.querySelector('#f-op').value.trim(), status:'在院', dischargedAt:null, history:null, createdAt:Date.now() };
+          surgery:el.querySelector('#f-op').value.trim(), status:'在院', dischargedAt:null, history:null,
+          dept:curDept()||null, createdAt:Date.now() };
         await txPut('patients',np); state.patients.push(np); await markChange();
         toast('已建档'); switchTab('ward');
       }
       renderAll(); return true;
+    },
+    onMount: el=>{
+      const st = el.querySelector('#f-st');
+      if(!st) return;
+      const row = el.querySelector('#f-trans-row');
+      st.onchange = ()=>{ if(row) row.style.display = st.value==='转科' ? 'block' : 'none'; };
     }});
 }
 
@@ -806,33 +1155,89 @@ function confirmBox(msg){
 /* ================= AI 功能（智谱 GLM 开放平台，浏览器直连） ================= */
 const PRIVACY_NOTE = '⚠️ 隐私确认：你选择了「只处理脱敏内容」。发送前请确认内容已去除姓名、病历号、住院号、条码等身份信息——点击发送即表示内容已脱敏。';
 
+/* 内置 AI 指令：__TODAY__ 会在发送时替换成当天日期；Provider 界面可自定义覆盖 */
+const AI_PROMPTS = {
+  hx: '你是神经外科病房的医生助理。从用户给出的原始记录中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。要求：只提取医学内容，忽略任何患者身份信息；原文没有的字段用空字符串；不要编造原文没有的内容；保持中文。',
+  exam: '你是检验/检查报告单识别助手。从图片中提取报告信息，只输出一个 JSON 对象：{"title":"报告项目名，如 血常规/头颅CT","date":"报告日期 YYYY-MM-DD，找不到则空字符串","findings":"关键异常结果与结论要点，逐条换行，只保留重要内容","important":true或false}。important=是否存在危急值或明显异常需重点关注。识别不了的字段留空，不要编造。',
+  todo: '你是病房医生助理。把口述内容拆解为待办事项数组，只输出 JSON 数组，每项形如 {"text":"待办内容","due":"YYYY-MM-DD 或空字符串"}。口语转简洁书面待办；相对时间（明天/后天/周X）按今天 __TODAY__ 换算；不编造内容。',
+  voice_hx: '你是神经外科病房的医生助理。从这段录音转写（可能包含问病史、家属叙述、查房讨论）中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。只提取医学内容，忽略任何患者身份信息与与病史无关的安排、闲聊；原文没有的字段用空字符串；不要编造；保持中文。'
+};
+/* 取实际生效的指令：用户在 Provider 界面自定义过的优先，否则用内置 */
+function sysPrompt(k){
+  const custom = state.meta.aiPrompts && state.meta.aiPrompts[k];
+  return String(custom || AI_PROMPTS[k] || '').replace(/__TODAY__/g, today());
+}
+
+/* 默认以智谱开放平台为例；任何 OpenAI 兼容平台（硅基流动、DeepSeek 官方、Moonshot 等）
+ * 都可在「AI 设置」里改接口地址 + 模型名接入。默认模型按 2026-10 官方文档核验。 */
 const AI_DEFAULTS = {
   base: 'https://open.bigmodel.cn/api/paas/v4',
   chat: 'glm-4.5-flash',
-  vision: 'glm-4.5v',
-  asr: 'glm-asr',
+  vision: 'glm-4v-flash',
+  asr: 'glm-asr-2512',
   asrUrl: 'https://open.bigmodel.cn/api/paas/v4/audio/transcriptions',
 };
+function aiKeyFor(pid){
+  const m = state.meta;
+  pid = pid || m.aiProv;
+  return (pid && m.aiKeys && m.aiKeys[pid]) || null;
+}
 function aiModels(){
   const m = state.meta;
   return {
+    base: m.aiBase || AI_DEFAULTS.base,
+    key: aiKeyFor(),
     chat: m.aiModelChat || AI_DEFAULTS.chat,
     vision: m.aiModelVision || AI_DEFAULTS.vision,
     asr: m.aiModelAsr || AI_DEFAULTS.asr,
     asrUrl: m.aiAsrUrl || AI_DEFAULTS.asrUrl,
   };
 }
-function needKey(){
-  if(state.meta.aiKey) return false;
-  toast('先到「我的 → AI 设置」粘贴 API Key'); return true;
+/* 一次性迁移：老版本存过已下线/过期的模型名则清空，回落到新默认值；
+ * 全局 key 迁移到当前服务商名下（每个 Provider 独立 key） */
+async function migrateAI(){
+  const m = state.meta;
+  let chg = false;
+  if(m.aiModelVision === 'glm-4.5v'){ m.aiModelVision = null; chg = true; }
+  if(m.aiModelAsr === 'glm-asr'){ m.aiModelAsr = null; chg = true; }
+  if(!m.aiKeys && m.aiKey){ m.aiKeys = {}; m.aiKeys[m.aiProv||'zhipu'] = m.aiKey; chg = true; }
+  if(chg) await metaPut(m);
 }
-async function callChat(messages, model, temperature, keyOverride){
+function needKey(){
+  if(aiKeyFor()) return false;
+  toast('先到「我的 → Provider」粘贴 API Key'); return true;
+}
+/* 服务商预设：模型清单为 2026-10-09 官方文档核验；标注 免费/付费 供选择参考 */
+const AI_PROVIDERS = [
+  { id:'zhipu', name:'智谱开放平台',
+    base:'https://open.bigmodel.cn/api/paas/v4',
+    asrUrl:'https://open.bigmodel.cn/api/paas/v4/audio/transcriptions',
+    chat:[['glm-4.5-flash','免费·实测可用'],['glm-4.7-flash','免费'],['glm-4-flash-250414','免费'],
+          ['glm-5.3-flash','付费'],['glm-5.3','付费'],['glm-4.6','付费']],
+    vision:[['glm-4v-flash','免费·推荐'],['glm-4.6v-flash','免费'],['glm-4.1v-thinking-flash','免费'],
+            ['glm-4.6v','付费'],['glm-5v-turbo','付费']],
+    asr:[['glm-asr-2512','付费·唯一转写模型']] },
+  { id:'siliconflow', name:'硅基流动 siliconflow.cn',
+    base:'https://api.siliconflow.cn/v1',
+    asrUrl:'https://api.siliconflow.cn/v1/audio/transcriptions',
+    chat:[], vision:[], asr:[],
+    note:'模型名请照硅基流动文档填写（模型选「✏️ 手动输入」）' },
+  { id:'deepseek', name:'DeepSeek 官方',
+    base:'https://api.deepseek.com/v1', asrUrl:'',
+    chat:[['deepseek-chat','通用'],['deepseek-reasoner','深度思考']],
+    vision:[], asr:[],
+    note:'DeepSeek 无视觉/语音转写模型，拍单和录音转写不可用' },
+  { id:'custom', name:'自定义（OpenAI 兼容，手填）',
+    base:'', asrUrl:'', chat:[], vision:[], asr:[] },
+];
+function provById(id){ return AI_PROVIDERS.find(p=>p.id===id) || null; }
+async function callChat(messages, model, temperature, keyOverride, baseOverride){
   const ctrl = new AbortController();
   const tm = setTimeout(()=>ctrl.abort(), 90000);
   try{
-    const r = await fetch(AI_DEFAULTS.base + '/chat/completions', {
+    const r = await fetch((baseOverride || aiModels().base) + '/chat/completions', {
       method:'POST',
-      headers:{'Content-Type':'application/json', 'Authorization':'Bearer '+(keyOverride||state.meta.aiKey)},
+      headers:{'Content-Type':'application/json', 'Authorization':'Bearer '+(keyOverride||aiModels().key)},
       body: JSON.stringify({model, messages, temperature: temperature==null?0.2:temperature}),
       signal: ctrl.signal,
     });
@@ -842,12 +1247,74 @@ async function callChat(messages, model, temperature, keyOverride){
     return (c && c.content) || '';
   } finally { clearTimeout(tm); }
 }
+/* 浏览器端音频解码：任何浏览器能解的格式（含 iOS 的 m4a/aac）统一重采样为 16kHz 单声道 PCM */
+async function decodePCM16k(blob){
+  const ac = new (window.AudioContext||window.webkitAudioContext)();
+  try{
+    const buf = await ac.decodeAudioData(await blob.arrayBuffer());
+    const oc = new OfflineAudioContext(1, Math.max(1, Math.ceil(buf.duration*16000)), 16000);
+    const src = oc.createBufferSource(); src.buffer = buf; src.connect(oc.destination); src.start();
+    const rend = await oc.startRendering();
+    return rend.getChannelData(0);
+  } finally { try{ ac.close(); }catch(e){} }
+}
+/* PCM 浮点数组 → WAV Blob（16kHz 单声道 16bit） */
+function floatToWavBlob(d, rate){
+  const wav = new ArrayBuffer(44 + d.length*2);
+  const v = new DataView(wav);
+  const ws = (o,s)=>{ for(let i=0;i<s.length;i++) v.setUint8(o+i, s.charCodeAt(i)); };
+  ws(0,'RIFF'); v.setUint32(4, 36+d.length*2, true); ws(8,'WAVE'); ws(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,rate,true); v.setUint32(28,rate*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  ws(36,'data'); v.setUint32(40, d.length*2, true);
+  for(let i=0;i<d.length;i++){ const s = Math.max(-1, Math.min(1, d[i])); v.setInt16(44+i*2, s<0 ? s*0x8000 : s*0x7FFF, true); }
+  return new Blob([wav], {type:'audio/wav'});
+}
+async function blobToWav(blob){
+  const d = await decodePCM16k(blob);
+  return floatToWavBlob(d, 16000);
+}
+/* 导入的录音文件 → 自动分段转写拼接（转写接口限单条约 30 秒，长录音切 28 秒/段） */
+async function transcribeFile(file, onProgress){
+  let d;
+  try{ d = await decodePCM16k(file); }
+  catch(e){
+    // 常见原因检测：ALAC（Apple 无损）m4a——Chromium 不支持解码
+    let head = '';
+    try{ head = new TextDecoder().decode(await file.slice(0, 200000).arrayBuffer()); }catch(_){}
+    if(head.includes('alac')) throw new Error('这个录音是 Apple 无损格式（ALAC），浏览器解不了——请先转成 AAC/MP3 再导入（不会转就把文件发我）');
+    throw new Error('无法解码这个音频文件（可能是格式不支持，试试转成 m4a/AAC/mp3）');
+  }
+  const SEG = 16000*28;
+  const total = Math.max(1, Math.ceil(d.length/SEG));
+  const texts = [];
+  for(let i=0;i<total;i++){
+    if(onProgress) onProgress(i+1, total);
+    const seg = d.subarray(i*SEG, Math.min((i+1)*SEG, d.length));
+    let txt = '';
+    try{
+      txt = await callAsr(floatToWavBlob(seg, 16000));
+    }catch(e){
+      if(i===0) throw e;
+      throw new Error('第 '+(i+1)+'/'+total+' 段转写失败：'+e.message+'（前面 '+texts.length+' 段已转好，稍后重试会从头再来）');
+    }
+    if(txt) texts.push(txt);
+    if(i<total-1) await new Promise(r=>setTimeout(r,400));   // 段间稍候，防限流
+  }
+  return texts.join(' ').replace(/\s+/g,' ').trim();
+}
 async function callAsr(blob){
   const m = aiModels();
+  let up = blob;
+  try{ up = await blobToWav(blob); }catch(e){ /* 解码失败则按原始格式上传 */ }
+  return callAsrWav(up);
+}
+async function callAsrWav(wavBlob){
+  const m = aiModels();
   const fd = new FormData();
-  fd.append('file', new File([blob], 'rec.'+((blob.type||'').includes('mp4')?'m4a':'webm'), {type: blob.type||'audio/mp4'}));
+  fd.append('file', new File([wavBlob], 'rec.wav', {type:'audio/wav'}));
   fd.append('model', m.asr);
-  const r = await fetch(m.asrUrl, {method:'POST', headers:{'Authorization':'Bearer '+state.meta.aiKey}, body:fd});
+  const r = await fetch(m.asrUrl, {method:'POST', headers:{'Authorization':'Bearer '+m.key}, body:fd});
   const data = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error((data.error && data.error.message) || ('HTTP '+r.status));
   return data.text || (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
@@ -876,41 +1343,131 @@ function compressImage(file, maxSide, quality){
 }
 const blobToDataURL = blob => new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(blob); });
 
-/* --- AI 设置 --- */
+/* --- AI 设置（provider 模式：选服务商 → 下拉选模型） --- */
 function aiSheet(){
   const m = state.meta;
-  sheet({ title:'AI 设置（智谱 GLM）', okText:'保存',
+  const curProv = m.aiProv ? (AI_PROVIDERS.some(p=>p.id===m.aiProv) ? m.aiProv : 'custom') : (Object.keys(m.aiKeys||{}).length || m.aiKey ? 'zhipu' : '');
+  sheet({ title:'AI Provider（选服务商 → 下拉选模型）', okText:'保存',
     body:`<div class="form">
-      <label>API Key（bigmodel.cn 开放平台；只存本机，不进备份文件）</label>
-      <input type="password" id="ai-key" value="${esc(m.aiKey||'')}" placeholder="粘贴 key，留空＝关闭 AI 功能">
-      <button class="btn ghost block" id="ai-test" style="margin-top:10px">🔍 测试连接（用上方 key + 文字模型发一句 ping）</button>
+      <label>服务商 Provider</label>
+      <select id="ai-prov"><option value="" ${curProv?'':'selected'}>请选择服务商…</option>${AI_PROVIDERS.map(p=>`<option value="${p.id}" ${p.id===curProv?'selected':''}>${esc(p.name)}</option>`).join('')}</select>
+      <label>接口地址 Base URL（切换服务商自动带出，可改）</label>
+      <input id="ai-base" value="${esc(m.aiBase||'')}" placeholder="https://...">
+      <label>API Key（每个服务商各自独立保存，切换自动带出）</label>
+      <input type="password" id="ai-key" placeholder="粘贴当前服务商的 key，留空＝关闭 AI 功能">
+      <button class="btn ghost block" id="ai-test" style="margin-top:10px">🔍 测试连接（用上方接口地址+key+文字模型发一句 ping）</button>
       <div id="ai-test-out" style="font-size:13px;color:var(--c-sub);margin-top:6px;white-space:pre-wrap"></div>
-      <label>文字模型</label><input id="ai-mc" value="${esc(m.aiModelChat||'')}" placeholder="${AI_DEFAULTS.chat}">
-      <label>视觉模型（拍单识别）</label><input id="ai-mv" value="${esc(m.aiModelVision||'')}" placeholder="${AI_DEFAULTS.vision}">
-      <label>语音转写模型</label><input id="ai-ma" value="${esc(m.aiModelAsr||'')}" placeholder="${AI_DEFAULTS.asr}">
-      <label>语音转写接口 URL（按智谱文档，转写失败时改这里）</label><input id="ai-au" value="${esc(m.aiAsrUrl||'')}" placeholder="${AI_DEFAULTS.asrUrl}">
-      <div class="tip" style="margin-top:10px">模型名默认值若与智谱当前文档不符，按文档改名即可。脱敏原则：任何含患者身份的内容不要原样发送。</div></div>`,
+      <label>文字模型</label>
+      <select id="ai-mc-sel"></select><input id="ai-mc" value="${esc(m.aiModelChat||'')}" placeholder="照平台文档填模型名" style="display:none;margin-top:6px">
+      <label>视觉模型（拍单识别，需平台支持图片输入）</label>
+      <select id="ai-mv-sel"></select><input id="ai-mv" value="${esc(m.aiModelVision||'')}" placeholder="照平台文档填模型名" style="display:none;margin-top:6px">
+      <label>语音转写模型</label>
+      <select id="ai-ma-sel"></select><input id="ai-ma" value="${esc(m.aiModelAsr||'')}" placeholder="照平台文档填模型名" style="display:none;margin-top:6px">
+      <details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;color:var(--c-sub)">🎙️ 语音转写接口 URL（只有录音转写用它，一般不用改）</summary>
+        <div style="margin-top:8px">
+          <label>语音转写接口 URL（切换服务商自动带出）</label>
+          <input id="ai-au" value="${esc(m.aiAsrUrl||'')}" placeholder="https://.../audio/transcriptions">
+          <div class="tip">「✍️ 直接输入」听写用不到这个。转写报 404/找不到接口时，来这里核对平台文档的转写端点。</div>
+        </div></details>
+      <div class="tip" style="margin-top:10px" id="ai-prov-note"></div>
+      <div class="tip" style="margin-top:6px">付费模型需账户有余额；免费模型按量零扣费。GLM Coding Plan 的订阅额度只能用于官方指定编程工具，不能用于本系统。转写接口普遍限单条 ≤30 秒。脱敏原则：任何含患者身份的内容不要原样发送。</div>
+      <details style="margin-top:10px"><summary style="cursor:pointer;font-size:13px;color:var(--c-sub)">🔧 AI 指令（prompt）· 点开查看与自定义</summary>
+        <div style="margin-top:8px">
+          <label>整理病史指令（留空＝用内置；__TODAY__ 会替换成当天日期）</label>
+          <textarea id="ai-p-hx" style="min-height:84px;font-size:12px" placeholder="${esc(AI_PROMPTS.hx)}">${esc((m.aiPrompts||{}).hx||'')}</textarea>
+          <label>拆解待办指令</label>
+          <textarea id="ai-p-todo" style="min-height:84px;font-size:12px" placeholder="${esc(AI_PROMPTS.todo)}">${esc((m.aiPrompts||{}).todo||'')}</textarea>
+          <label>拍单识别指令</label>
+          <textarea id="ai-p-exam" style="min-height:84px;font-size:12px" placeholder="${esc(AI_PROMPTS.exam)}">${esc((m.aiPrompts||{}).exam||'')}</textarea>
+          <div class="tip" style="margin-top:6px">这里就是发给 AI 的原话，改了立即生效；清空内容恢复内置。注意：输出格式要求（JSON 字段名）别改，改了系统存不进去。语音整理病史用内置指令。科室套路在「📐 科室套路」里单独管理。</div>
+        </div></details>
+      <div id="ai-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div></div>`,
     onOk: async el=>{
-      m.aiKey = el.querySelector('#ai-key').value.trim() || null;
-      m.aiModelChat = el.querySelector('#ai-mc').value.trim() || null;
-      m.aiModelVision = el.querySelector('#ai-mv').value.trim() || null;
-      m.aiModelAsr = el.querySelector('#ai-ma').value.trim() || null;
+      const getM = (sel,inp)=> sel.value==='__custom' ? inp.value.trim() : sel.value;
+      const prov = el.querySelector('#ai-prov').value;
+      if(!prov){ el.querySelector('#ai-err').textContent = '先选择服务商再保存'; return false; }
+      const keyVal = el.querySelector('#ai-key').value.trim() || null;
+      m.aiProv = prov;
+      m.aiKeys = m.aiKeys || {};
+      m.aiKeys[prov] = keyVal;      // 每个服务商各自一把
+      m.aiKey = keyVal;             // 兼容字段=当前服务商的 key
+      m.aiBase = el.querySelector('#ai-base').value.trim() || null;
+      m.aiModelChat = getM(el.querySelector('#ai-mc-sel'), el.querySelector('#ai-mc')) || null;
+      m.aiModelVision = getM(el.querySelector('#ai-mv-sel'), el.querySelector('#ai-mv')) || null;
+      m.aiModelAsr = getM(el.querySelector('#ai-ma-sel'), el.querySelector('#ai-ma')) || null;
       m.aiAsrUrl = el.querySelector('#ai-au').value.trim() || null;
-      await metaPut(m); renderMore(); toast('AI 设置已保存'); return true;
+      m.aiPrompts = {
+        hx: el.querySelector('#ai-p-hx').value.trim() || null,
+        todo: el.querySelector('#ai-p-todo').value.trim() || null,
+        exam: el.querySelector('#ai-p-exam').value.trim() || null,
+      };
+      await metaPut(m); renderMore(); toast('Provider 设置已保存'); return true;
     },
     onMount: el=>{
-      el.querySelector('#ai-test').onclick = async ()=>{
-        const key = el.querySelector('#ai-key').value.trim();
-        const out = el.querySelector('#ai-test-out');
+      const $ = id => el.querySelector(id.startsWith('#') ? id : '#'+id);
+      const fillSel = (sel, list, cur) => {
+        const opts = list.map(([v])=>`<option value="${esc(v)}">${esc(v)}</option>`).join('')
+          + `<option value="__custom">✏️ 手动输入模型名…</option>`;
+        sel.innerHTML = opts;
+        if(cur && list.some(([v])=>v===cur)) sel.value = cur;
+        else sel.value = '__custom';
+      };
+      const syncInput = (sel,inp)=>{
+        if(sel.value==='__custom'){ inp.style.display='block'; if(!inp.value && sel.dataset.hint) inp.value = sel.dataset.hint; }
+        else inp.style.display='none';
+      };
+      const applyProv = (pid, keepUserBase)=>{
+        if(!pid){   // 未选择服务商：全部留空，等用户选
+          $('ai-base').value = ''; $('ai-au').value = ''; $('ai-key').value = '';
+          fillSel($('ai-mc-sel'), [], ''); fillSel($('ai-mv-sel'), [], ''); fillSel($('ai-ma-sel'), [], '');
+          [['ai-mc-sel','ai-mc'],['ai-mv-sel','ai-mv'],['ai-ma-sel','ai-ma']].forEach(([s,i])=>syncInput($('#'+s), $('#'+i)));
+          $('ai-prov-note').innerHTML = '📌 先在上方选择一个服务商（智谱 / 硅基流动 / DeepSeek / 自定义），地址和模型会自动带出。';
+          return;
+        }
+        const pv = provById(pid) || AI_PROVIDERS[3];
+        const sameProv = m.aiProv===pid;   // 仅当确实配置过该服务商时，才回显其已存模型
+        if(!keepUserBase) $('ai-base').value = pv.base || '';
+        $('ai-au').value = pv.asrUrl || '';
+        $('ai-key').value = aiKeyFor(pid) || '';      // 每个服务商各自的 key
+        fillSel($('ai-mc-sel'), pv.chat, sameProv ? m.aiModelChat : (pv.chat[0]&&pv.chat[0][0]));
+        fillSel($('ai-mv-sel'), pv.vision, sameProv ? m.aiModelVision : (pv.vision[0]&&pv.vision[0][0]));
+        fillSel($('ai-ma-sel'), pv.asr, sameProv ? m.aiModelAsr : (pv.asr[0]&&pv.asr[0][0]));
+        [['ai-mc-sel','ai-mc'],['ai-mv-sel','ai-mv'],['ai-ma-sel','ai-ma']].forEach(([s,i])=>{
+          const sel=$('#'+s), inp=$('#'+i);
+          if(sel.value==='__custom' && !inp.value && sel.options.length>1){ sel.selectedIndex = 0; }
+          syncInput(sel, inp);
+        });
+        $('ai-prov-note').innerHTML = pv.note ? '📌 '+esc(pv.note) : '智谱免费模型：文字 glm-4.5-flash、glm-4.7-flash；视觉 glm-4v-flash、glm-4.6v-flash。其余模型付费、按量计费（清单按官方文档 2026-10 核验）。';
+      };
+      // 首次打开：base/asrUrl 保留用户已存值；provider 用已存的
+      applyProv(curProv, true);
+      $('ai-prov').onchange = ()=> applyProv($('ai-prov').value, false);
+      ['ai-mc-sel|ai-mc','ai-mv-sel|ai-mv','ai-ma-sel|ai-ma'].forEach(pair=>{
+        const [s,i] = pair.split('|');
+        $('#'+s).onchange = ()=> syncInput($('#'+s), $('#'+i));
+      });
+      $('ai-test').onclick = async ()=>{
+        const key = $('ai-key').value.trim();
+        const base = $('ai-base').value.trim() || AI_DEFAULTS.base;
+        const mcSel=$('ai-mc-sel'), mcInp=$('ai-mc');
+        const model = mcSel.value==='__custom' ? mcInp.value.trim() : mcSel.value;
+        const out = $('ai-test-out');
         if(!key){ out.textContent = '先粘贴 API Key'; return; }
-        const model = el.querySelector('#ai-mc').value.trim() || AI_DEFAULTS.chat;
-        out.textContent = '测试中…';
+        if(!model){ out.textContent = '先选或填一个文字模型'; return; }
+        const body = { model, messages:[{role:'user', content:'收到请只回复：连接成功'}], temperature:0.1 };
+        const shownKey = key.length>14 ? key.slice(0,8)+'……'+key.slice(-4) : '***';
+        const reqText = 'POST ' + base + '/chat/completions\nAuthorization: Bearer ' + shownKey + '\n' + JSON.stringify(body, null, 2);
+        out.textContent = '请求中…\n—— 请求 ——\n' + reqText;
         const t0 = Date.now();
         try{
-          const r = await callChat([{role:'user', content:'收到请只回复：连接成功'}], model, 0.1, key);
-          out.textContent = '✅ 连接成功（'+model+'，'+((Date.now()-t0)/1000)+'s）：'+String(r).slice(0,60);
+          const r = await fetch(base+'/chat/completions', {method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+key}, body: JSON.stringify(body)});
+          const txt = await r.text();
+          let pretty = txt;
+          try{ pretty = JSON.stringify(JSON.parse(txt), null, 2); }catch(e){}
+          if(pretty.length > 2500) pretty = pretty.slice(0, 2500) + '\n…(过长截断)';
+          out.textContent = 'HTTP ' + r.status + '（' + ((Date.now()-t0)/1000) + ' 秒）\n—— 请求 ——\n' + reqText + '\n—— 返回 ——\n' + pretty + (r.ok ? '\n✅ 连接正常' : '\n❌ 请求被拒绝：返回里的 error.message 就是具体原因');
         }catch(err){
-          out.textContent = '❌ 失败：'+err.message+'\n（多为 key 不对 / 模型名不对 / 未开通对应模型权限）';
+          out.textContent = '—— 请求 ——\n' + reqText + '\n—— 请求未能发出 ——\n' + err.message + '\n（多为网络不通 / 接口地址写错 / 该平台不允许浏览器直连）';
         }
       };
     }});
@@ -924,16 +1481,20 @@ function hxAISheet(p){
       <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin-bottom:10px">${PRIVACY_NOTE}</div>
       <label>把病历/出院小结/病程里的病史部分粘贴到下面（先脱敏）</label>
       <textarea id="hx-src" style="min-height:160px" placeholder="如：因反复发作性意识丧失3年入院，每次持续约1分钟……"></textarea>
+      <label>科室套路（可选，AI 输出会照它来）</label>
+      <select id="hx-play"><option value="">不使用</option>${state.plays.map(y=>`<option value="${y.id}" ${y.id===state.lastPlay?'selected':''}>${esc((y.dept||'未分科')+' · '+y.text.replace(/\s+/g,' ').slice(0,24))}</option>`).join('')}</select>
       <div id="hx-err" style="color:var(--c-danger);font-size:13px;margin-top:8px;white-space:pre-wrap"></div></div>`,
     onOk: async el=>{
       const src = el.querySelector('#hx-src').value.trim();
       if(!src){ toast('先粘贴原文'); return false; }
+      const playId = el.querySelector('#hx-play').value;
+      state.lastPlay = playId;
       const sh = el.closest('.sheet');
       const okb = sh.querySelector('#sh-ok');
       okb.textContent = 'AI 处理中…'; okb.disabled = true;
       try{
         const out = await callChat([
-          {role:'system', content:'你是神经外科病房的医生助理。从用户给出的原始记录中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。要求：只提取医学内容，忽略任何患者身份信息；原文没有的字段用空字符串；不要编造原文没有的内容；保持中文。'},
+          {role:'system', content: sysPrompt('hx')+playPromptAppend(playId)},
           {role:'user', content: src}
         ], aiModels().chat);
         const j = extractJSON(out);
@@ -1021,7 +1582,7 @@ function examAISheet(p){
         try{
           const b64 = await blobToDataURL(pickedBlob);
           const out = await callChat([
-            {role:'system', content:'你是检验/检查报告单识别助手。从图片中提取报告信息，只输出一个 JSON 对象：{"title":"报告项目名，如 血常规/头颅CT","date":"报告日期 YYYY-MM-DD，找不到则空字符串","findings":"关键异常结果与结论要点，逐条换行，只保留重要内容","important":true或false}。important=是否存在危急值或明显异常需重点关注。识别不了的字段留空，不要编造。'},
+            {role:'system', content: sysPrompt('exam')},
             {role:'user', content:[
               {type:'image_url', image_url:{url:b64}},
               {type:'text', text:'提取这张报告单（已脱敏）的关键信息。'}
@@ -1054,10 +1615,15 @@ function voiceSheet(){
   sheet({ title:'🎙️ 语音记录', hideOk:true,
     body:`<div class="form">
       <label>归属患者</label>
-      <select id="vc-pt">${pts.map(p=>`<option value="${p.id}">${esc(ptName(p))}</option>`).join('')}</select>
-      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin:10px 0">查房/谈话随手录：主任安排、问病史、家属谈话都行。尽量别提患者姓名（脱敏原则），说「这床 / 12床」。转写后可「拆解为待办」或「整理为病史」。</div>
+      <select id="vc-pt">${pts.map(p=>`<option value="${p.id}" ${p.id===state.cur?'selected':''}>${esc(ptName(p))}</option>`).join('')}</select>
+      <label>科室套路（可选，AI 输出会照它来）</label>
+      <select id="vc-play"><option value="">不使用</option>${state.plays.map(y=>`<option value="${y.id}" ${y.id===state.lastPlay?'selected':''}>${esc((y.dept||'未分科')+' · '+y.text.replace(/\s+/g,' ').slice(0,24))}</option>`).join('')}</select>
+      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin:10px 0">三种方式：① 现场录音（≤30 秒）；② 📁 导入 iPhone「语音备忘录」的录音文件——多长的都行，自动分段转写；③ ✍️ 直接输入/键盘听写（免费）。尽量别提患者姓名，说「这床 / 12床」。转写后可「拆解为待办」或「整理为病史」。</div>
       <button class="btn block" id="vc-rec">🎙️ 开始录音</button>
+      <button class="btn ghost block" id="vc-file" style="margin-top:8px">📁 导入 iPhone 录音文件（语音备忘录）</button>
+      <input type="file" id="vc-file-in" accept="audio/*,.m4a,.mp3,.wav,.aac" style="display:none">
       <div id="vc-status" style="text-align:center;font-size:13px;color:var(--c-sub);margin-top:8px"></div>
+      <button class="btn ghost block" id="vc-manual" style="margin-top:8px">✍️ 不录音，直接输入（点这里后用键盘 🎤 听写）</button>
       <label id="vc-lb" style="display:none">转写文本（可改）</label>
       <textarea id="vc-text" style="display:none;min-height:70px"></textarea>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -1105,20 +1671,51 @@ function voiceSheet(){
           recBtn.textContent = '⏹ 停止录音';
           timer = setInterval(()=>{
             const s = Math.round((Date.now()-t0)/1000);
-            el.querySelector('#vc-status').textContent = '录音中 '+s+'s（口述待办，说完点停止）';
+            el.querySelector('#vc-status').textContent = '录音中 '+s+'s（≤30 秒，说完点停止）';
+            if(s >= 28 && rec && rec.state==='recording'){ rec.stop(); }
           }, 300);
         }catch(err){
           el.querySelector('#vc-err').textContent = '无法使用麦克风：'+err.message;
         }
       };
+      el.querySelector('#vc-manual').onclick = ()=>{
+        const ta = el.querySelector('#vc-text');
+        ta.style.display='block'; ta.focus();
+        el.querySelector('#vc-lb').style.display='block';
+        el.querySelector('#vc-parse').style.display='block';
+        el.querySelector('#vc-hx').style.display='block';
+        el.querySelector('#vc-status').textContent = '在文本框里点键盘上的 🎤 麦克风即可语音听写（免费、不耗转写额度）';
+      };
+      el.querySelector('#vc-file').onclick = ()=> el.querySelector('#vc-file-in').click();
+      el.querySelector('#vc-file-in').onchange = async e=>{
+        const f = e.target.files[0]; e.target.value='';
+        if(!f) return;
+        const status = el.querySelector('#vc-status');
+        const err = el.querySelector('#vc-err'); if(err) err.textContent='';
+        try{
+          status.textContent = '解码音频中…（长录音需要一点时间）';
+          const txt = await transcribeFile(f, (i,total)=>{ status.textContent = '转写中 第 '+i+'/'+total+' 段…'; });
+          if(!txt.trim()) throw new Error('未识别到内容');
+          const ta = el.querySelector('#vc-text');
+          ta.value = txt; ta.style.display='block';
+          el.querySelector('#vc-lb').style.display='block';
+          el.querySelector('#vc-parse').style.display='block';
+          el.querySelector('#vc-hx').style.display='block';
+          status.textContent = '已转写「'+f.name+'」，可修改后拆解';
+        }catch(err2){
+          err.textContent = '导入转写失败：'+err2.message;
+          status.textContent = '';
+        }
+      };
       el.querySelector('#vc-parse').onclick = async ()=>{
         const src = el.querySelector('#vc-text').value.trim();
         if(!src) return toast('没有可拆解的文本');
+        const playId = el.querySelector('#vc-play').value; state.lastPlay = playId;
         const pb = el.querySelector('#vc-parse');
         pb.textContent = 'AI 拆解中…'; pb.disabled = true;
         try{
           const out = await callChat([
-            {role:'system', content:'你是病房医生助理。把口述内容拆解为待办事项数组，只输出 JSON 数组，每项形如 {"text":"待办内容","due":"YYYY-MM-DD 或空字符串"}。口语转简洁书面待办；相对时间（明天/后天/周X）按今天 '+today()+' 换算；不编造内容。'},
+            {role:'system', content: sysPrompt('todo')+playPromptAppend(playId)},
             {role:'user', content: src}
           ], aiModels().chat);
           parsed = extractJSON(out);
@@ -1140,12 +1737,13 @@ function voiceSheet(){
         }
         const src = el.querySelector('#vc-text').value.trim();
         if(!src) return toast('没有可整理的文本');
+        const playId = el.querySelector('#vc-play').value; state.lastPlay = playId;
         const p = ptById(el.querySelector('#vc-pt').value);
         const hb = el.querySelector('#vc-hx');
         hb.textContent = 'AI 整理中…'; hb.disabled = true;
         try{
           const out = await callChat([
-            {role:'system', content:'你是神经外科病房的医生助理。从这段录音转写（可能包含问病史、家属叙述、查房讨论）中提取病史信息，只输出一个 JSON 对象：{"chief":"主诉","present":"现病史","past":"既往史","exam":"查体要点"}。只提取医学内容，忽略任何患者身份信息与与病史无关的安排、闲聊；原文没有的字段用空字符串；不要编造；保持中文。'},
+            {role:'system', content: sysPrompt('voice_hx')+playPromptAppend(playId)},
             {role:'user', content: src}
           ], aiModels().chat);
           const j = extractJSON(out);
@@ -1176,23 +1774,24 @@ function switchTab(t){
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('on', b.dataset.tab===t));
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
   $('#view-'+t).classList.add('on');
-  $('#bar-title').textContent = t==='ward'?'管床': t==='todos'?'待办':'我的';
+  $('#bar-title').textContent = t==='ward'?'海马':'我的';
   $('#btn-add-pt').style.display = t==='ward' ? '' : 'none';
   $('#main').scrollTop = 0;
 }
 function renderAll(){
-  renderWard(); renderTodos(); renderMore();
+  renderWard(); renderTodos(); renderMore(); renderNotes();
   const n = openTodoAll().length;
   const b1=$('#bdg-ward'), b2=$('#bdg-todos');
-  b2.textContent=n; b2.style.display = n?'':'none';
-  b1.style.display='none';
+  if(b2){ b2.textContent=n; b2.style.display = n?'':'none'; }
+  if(b1) b1.style.display='none';
 }
 
 /* ================= 启动 ================= */
 (async function init(){
   db = await openDB();
   await loadAll();
-  importBackup();
+  await migrateAI();
+  $('#file-in').onchange = handleImportFile;   // 只绑处理器，不自动弹文件框（v1.11.1 修复）
   $('#lock-ok').onclick = tryLock;
   $('#lock-input').onkeydown = e=>{ if(e.key==='Enter') tryLock(); };
   $('#lock-forgot').onclick = async ()=>{
@@ -1210,6 +1809,8 @@ function renderAll(){
   $('#btn-add-pt').onclick = ()=> patientSheet(null);
   document.querySelectorAll('.tabbar button').forEach(b=> b.onclick=()=>switchTab(b.dataset.tab));
   $('#p-back').onclick = ()=>{ $('#ppage').classList.remove('on'); state.cur=null; renderAll(); };
+  $('#tp-back').onclick = ()=> $('#todos-page').classList.remove('on');
+  $('#np-back').onclick = ()=> $('#notes-page').classList.remove('on');
   $('#p-edit').onclick = ()=> patientSheet(state.cur);
   $('#p-seg').querySelectorAll('button').forEach(b=> b.onclick=()=>{
     state.pTab=b.dataset.pt;
@@ -1226,7 +1827,13 @@ function renderAll(){
   // 有 PIN → 输 PIN；从未设置且从未跳过 → 首次引导；跳过过 → 直接进
   if(state.meta.pinHash || !state.meta.pinSkipped){ showLock(); return; }
   $('#app').classList.add('on'); renderAll();
-})();
+})().catch(err=>{
+  document.title = '海马 · 启动失败';
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;font-size:14px;color:#333;text-align:center;background:#f7f6f2;z-index:999;white-space:pre-wrap';
+  el.textContent = '启动失败：' + (err && err.message || err) + '\n\n请彻底关闭所有海马页面后重新打开；仍不行就重启浏览器。';
+  document.body.appendChild(el);
+});
 </script>
 </body>
 </html>
