@@ -1618,10 +1618,10 @@ function voiceSheet(){
       <select id="vc-pt">${pts.map(p=>`<option value="${p.id}" ${p.id===state.cur?'selected':''}>${esc(ptName(p))}</option>`).join('')}</select>
       <label>科室套路（可选，AI 输出会照它来）</label>
       <select id="vc-play"><option value="">不使用</option>${state.plays.map(y=>`<option value="${y.id}" ${y.id===state.lastPlay?'selected':''}>${esc((y.dept||'未分科')+' · '+y.text.replace(/\s+/g,' ').slice(0,24))}</option>`).join('')}</select>
-      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin:10px 0">三种方式：① 现场录音（≤30 秒）；② 📁 导入 iPhone「语音备忘录」的录音文件——多长的都行，自动分段转写；③ ✍️ 直接输入/键盘听写（免费）。尽量别提患者姓名，说「这床 / 12床」。转写后可「拆解为待办」或「整理为病史」。</div>
+      <div class="tip" style="border:1px solid #f0d9b5;background:#fdf8ef;padding:8px 10px;border-radius:10px;margin:10px 0">三种方式：① 现场录音（≤30 秒）；② 📁 导入 iPhone「语音备忘录」的录音文件——多长的都行，自动分段转写；③ ✍️ 直接输入/键盘听写（免费）。导入时在文件选择器里找「语音备忘录」文件夹（或「最近项目」）。尽量别提患者姓名，说「这床 / 12床」。转写后可「拆解为待办」或「整理为病史」。</div>
       <button class="btn block" id="vc-rec">🎙️ 开始录音</button>
       <button class="btn ghost block" id="vc-file" style="margin-top:8px">📁 导入 iPhone 录音文件（语音备忘录）</button>
-      <input type="file" id="vc-file-in" accept="audio/*,.m4a,.mp3,.wav,.aac" style="display:none">
+      <input type="file" id="vc-file-in" style="display:none">
       <div id="vc-status" style="text-align:center;font-size:13px;color:var(--c-sub);margin-top:8px"></div>
       <button class="btn ghost block" id="vc-manual" style="margin-top:8px">✍️ 不录音，直接输入（点这里后用键盘 🎤 听写）</button>
       <label id="vc-lb" style="display:none">转写文本（可改）</label>
@@ -1690,6 +1690,7 @@ function voiceSheet(){
       el.querySelector('#vc-file-in').onchange = async e=>{
         const f = e.target.files[0]; e.target.value='';
         if(!f) return;
+        if(!f.size){ el.querySelector('#vc-err').textContent = '选中的文件是空的（'+f.name+'）——如果录音存在 iCloud 没下载下来，先在「文件」App 里点一下它下载，再导入'; return; }
         const status = el.querySelector('#vc-status');
         const err = el.querySelector('#vc-err'); if(err) err.textContent='';
         try{
